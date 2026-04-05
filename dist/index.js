@@ -400,6 +400,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
     }
   };
 };
+var src_default = MastraPlugin;
 export {
-  MastraPlugin
+  src_default as default
 };
