@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.44",
+  version: "0.1.45",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178341,7 +178341,9 @@ var MastraPlugin = async (ctx) => {
       const chunkBytes2 = chunks[i].reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), "utf8"), 0);
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
-      omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      const chunkFirst = chunks[i][0]?.createdAt?.toISOString() ?? "unknown";
+      const chunkLast = chunks[i][chunks[i].length - 1]?.createdAt?.toISOString() ?? "unknown";
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens, range=[${chunkFirst} → ${chunkLast}]`);
       if (i > 0) {
         const db = store.client;
         const lookupKey = `thread:${sessionId}`;

@@ -428,7 +428,9 @@ export const MastraPlugin: Plugin = async ctx => {
       const chunkBytes2 = chunks[i]!.reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), 'utf8'), 0);
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
-      omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      const chunkFirst = chunks[i]![0]?.createdAt?.toISOString() ?? 'unknown';
+      const chunkLast = chunks[i]![chunks[i]!.length - 1]?.createdAt?.toISOString() ?? 'unknown';
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens, range=[${chunkFirst} → ${chunkLast}]`);
       if (i > 0) {
         // Clear lastObservedAt in DB so Mastra's timestamp filter doesn't block this chunk
         const db = (store as any).client;
