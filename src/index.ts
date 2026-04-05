@@ -160,7 +160,8 @@ function convertMessages(messages: { info: Message; parts: Part[] }[], sessionId
         content: { format: 2 as const, parts: convertedParts },
       };
     })
-    .filter((m): m is NonNullable<typeof m> => m !== null);
+    .filter((m): m is NonNullable<typeof m> => m !== null)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 function progressBar(current: number, total: number, width = 20): string {
@@ -428,12 +429,21 @@ export const MastraPlugin: Plugin = async ctx => {
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
       omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
-      // Diagnostic: check how many chunk messages are already in DB observedMessageIds
+      if (i > 0) {
+        // Clear lastObservedAt in DB so Mastra's timestamp filter doesn't block this chunk
+        const db = (store as any).client;
+        const lookupKey = `thread:${sessionId}`;
+        await db.execute({ sql: `UPDATE mastra_observational_memory SET lastObservedAt = NULL WHERE lookupKey = ?`, args: [lookupKey] });
+        // Clear in-memory observedMessageIds so Mastra's Set filter doesn't block this chunk
+        (om as any).observedMessageIds?.clear();
+        omLog(`[observe] chunk ${i + 1}/${chunks.length} — cleared lastObservedAt and in-memory Set`);
+      }
+      // Diagnostic: check DB state before calling observe
       const diagRecord = await om.getRecord(sessionId);
       const dbObservedIds = new Set(Array.isArray(diagRecord?.observedMessageIds) ? diagRecord!.observedMessageIds : []);
       const chunkIds = chunks[i]!.map(m => m.id).filter(Boolean);
       const alreadyObserved = chunkIds.filter(id => dbObservedIds.has(id as string));
-      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — lastObservedAt=${diagRecord?.lastObservedAt ?? 'null'}, dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
       const t0 = Date.now();
       await runObserve(sessionId, chunks[i]!);
       const elapsed = Date.now() - t0;

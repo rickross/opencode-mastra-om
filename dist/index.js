@@ -34349,7 +34349,7 @@ var init_dist = __esm(() => {
     HEX[IDX] = (IDX + 256).toString(16).substring(1);
 });
 
-// node_modules/@ai-sdk/provider/dist/index.mjs
+// node_modules/@ai-sdk/provider-utils-v5/node_modules/@ai-sdk/provider/dist/index.mjs
 function getErrorMessage5(error45) {
   if (error45 == null) {
     return "unknown error";
@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.43",
+  version: "0.1.44",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178112,7 +178112,7 @@ function convertMessages2(messages, sessionId) {
       resourceId: sessionId,
       content: { format: 2, parts: convertedParts }
     };
-  }).filter((m) => m !== null);
+  }).filter((m) => m !== null).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 function progressBar(current, total, width = 20) {
   const pct = total > 0 ? Math.min(current / total, 1) : 0;
@@ -178342,11 +178342,18 @@ var MastraPlugin = async (ctx) => {
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
       omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      if (i > 0) {
+        const db = store.client;
+        const lookupKey = `thread:${sessionId}`;
+        await db.execute({ sql: `UPDATE mastra_observational_memory SET lastObservedAt = NULL WHERE lookupKey = ?`, args: [lookupKey] });
+        om.observedMessageIds?.clear();
+        omLog(`[observe] chunk ${i + 1}/${chunks.length} — cleared lastObservedAt and in-memory Set`);
+      }
       const diagRecord = await om.getRecord(sessionId);
       const dbObservedIds = new Set(Array.isArray(diagRecord?.observedMessageIds) ? diagRecord.observedMessageIds : []);
       const chunkIds = chunks[i].map((m) => m.id).filter(Boolean);
       const alreadyObserved = chunkIds.filter((id) => dbObservedIds.has(id));
-      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — lastObservedAt=${diagRecord?.lastObservedAt ?? "null"}, dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
       const t0 = Date.now();
       await runObserve(sessionId, chunks[i]);
       const elapsed = Date.now() - t0;
