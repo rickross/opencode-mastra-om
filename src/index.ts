@@ -407,18 +407,28 @@ export const MastraPlugin: Plugin = async ctx => {
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
+      omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
       const sessionId = output.messages[0]?.info.sessionID;
-      if (!sessionId) return;
+      if (!sessionId) { omLog(`[transform] no sessionId, skipping`); return; }
+      omLog(`[transform] sessionId=${sessionId}`);
 
+      omLog(`[transform] calling resolveCredentials`);
       await resolveCredentials();
+      omLog(`[transform] resolveCredentials done`);
 
       try {
+        omLog(`[transform] converting messages`);
         const mastraMessages = convertMessages(output.messages, sessionId);
+        omLog(`[transform] converted ${mastraMessages.length} messages`);
         if (mastraMessages.length > 0) {
+          omLog(`[transform] calling runObserve`);
           await runObserve(sessionId, mastraMessages);
+          omLog(`[transform] runObserve done`);
         }
 
+        omLog(`[transform] getting record`);
         const record = await om.getRecord(sessionId);
+        omLog(`[transform] got record, lastObservedAt=${record?.lastObservedAt}`);
         if (record?.lastObservedAt) {
           const lastObservedAt = new Date(record.lastObservedAt);
           output.messages = output.messages.filter(({ info }) => {
@@ -426,6 +436,7 @@ export const MastraPlugin: Plugin = async ctx => {
           });
         }
         lastError = null;
+        omLog(`[transform] done`);
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         omLog(`[error] transform failed: ${lastError}`);
