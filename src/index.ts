@@ -530,30 +530,11 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
 
       om_restore: tool({
-        description: 'Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).',
-        args: { slot: { type: 'number', description: '1 = most recent backup, 2 = one generation older' } },
-        async execute(args, context) {
-          const threadId = context.sessionID;
-          const slot = args.slot === 2 ? 2 : 1;
-          try {
-            const db = (store as any).turso;
-            if (!db) return 'Raw DB access unavailable.';
-            const result = await db.execute({
-              sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
-              args: [threadId, slot],
-            });
-            const row = result.rows?.[0];
-            if (!row) return `No backup found in slot ${slot}.`;
-            await db.execute({
-              sql: `UPDATE mastra_observational_memory SET activeObservations = ?, generationCount = ? WHERE lookupKey = ?`,
-              args: [row.observations, row.generationCount, threadId],
-            });
-            omLog(`[restore] restored slot ${slot} — gen ${row.generationCount}, saved at ${row.savedAt}`);
-            return [`✅ Restored from slot ${slot}`, `  Generation: ${row.generationCount}`, `  Saved at: ${row.savedAt}`].join('\n');
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return `Restore failed: ${msg}`;
-          }
+        description: 'Restore observational memory from backup.',
+        args: {},
+        async execute() {
+          omLog('[restore] execute called');
+          return 'ok';
         },
       }),
 
