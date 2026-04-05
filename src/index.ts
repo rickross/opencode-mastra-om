@@ -279,6 +279,7 @@ export const MastraPlugin: Plugin = async ctx => {
   const om = new ObservationalMemory(omOptions);
 
   omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
+  omLog(`[init] init complete, registering hooks and tools`);
 
   // Helper: backup current observations before observe/reflect
   const backupObservations = async (threadId: string, trigger: string) => {
@@ -381,8 +382,10 @@ export const MastraPlugin: Plugin = async ctx => {
 
   return {
     event: async ({ event }) => {
+      omLog(`[event] received event type=${event.type}`);
       if (event.type === 'session.created') {
         const sessionId = event.properties.info.id;
+        omLog(`[event] session.created, calling om.getOrCreateRecord for ${sessionId}`);
         try {
           await om.getOrCreateRecord(sessionId);
           omLog(`[session] initialized record for ${sessionId}`);
