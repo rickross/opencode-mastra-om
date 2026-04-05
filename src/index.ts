@@ -91,13 +91,13 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
   logPath?: string;
 
   /**
-   * Maximum tokens per observation chunk. When set, om_observe splits unobserved
+   * Maximum bytes per observation chunk. When set, om_observe splits unobserved
    * messages into chunks of this size and processes them sequentially.
-   * Set this to a safe value below your model's input token limit.
-   * E.g., 500000 for Gemini 2.5 Flash, 100000 for Claude.
+   * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
+   * E.g., 2000000 (2MB) for Gemini 2.5 Flash, 400000 (400KB) for Claude.
    * If not set, no chunking is applied (default behavior).
    */
-  chunkTokens?: number;
+  chunkBytes?: number;
 }
 
 const CONFIG_FILE = '.opencode/mastra.json';
@@ -522,28 +522,28 @@ export const MastraPlugin: Plugin = async ctx => {
             const mastraMessages = convertMessages(resp.data, threadId);
             await backupObservations(threadId, 'pre-observe');
 
-            const chunkTokens = config.chunkTokens;
-            if (!chunkTokens) {
+            const chunkBytes = config.chunkBytes;
+            if (!chunkBytes) {
               // No chunking — original behavior
               await runObserve(threadId, mastraMessages);
               return 'Observation cycle triggered. Check om_status for results.';
             }
 
-            // Chunked observe — split messages into safe-sized pieces
-            const tokenCounter = new TokenCounter();
+            // Chunked observe — split messages into safe-sized pieces at message boundaries
+            // Uses UTF-8 byte length — deterministic, handles multibyte chars correctly
             const chunks: (typeof mastraMessages)[] = [];
             let currentChunk: typeof mastraMessages = [];
-            let currentTokens = 0;
+            let currentBytes = 0;
 
             for (const msg of mastraMessages) {
-              const msgTokens = tokenCounter.countMessages([msg]);
-              if (currentTokens + msgTokens > chunkTokens && currentChunk.length > 0) {
+              const msgBytes = Buffer.byteLength(JSON.stringify(msg), 'utf8');
+              if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
                 chunks.push(currentChunk);
                 currentChunk = [msg];
-                currentTokens = msgTokens;
+                currentBytes = msgBytes;
               } else {
                 currentChunk.push(msg);
-                currentTokens += msgTokens;
+                currentBytes += msgBytes;
               }
             }
             if (currentChunk.length > 0) chunks.push(currentChunk);
@@ -553,9 +553,9 @@ export const MastraPlugin: Plugin = async ctx => {
               return 'Observation cycle triggered (single chunk). Check om_status for results.';
             }
 
-            omLog(`[observe] chunked into ${chunks.length} chunks of ~${chunkTokens} tokens each`);
+            omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
             void ctx.client.tui.showToast({
-              body: { title: 'Mastra OM', message: `Observing in ${chunks.length} chunks...`, variant: 'info', duration: 5000 },
+              body: { title: 'Mastra OM', message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: 'info', duration: 5000 },
             });
 
             const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);

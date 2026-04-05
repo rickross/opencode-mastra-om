@@ -180056,24 +180056,23 @@ ${OBSERVATION_CONTINUATION_HINT}`);
               return "No messages to observe.";
             const mastraMessages = convertMessages2(resp.data, threadId);
             await backupObservations(threadId, "pre-observe");
-            const chunkTokens = config2.chunkTokens;
-            if (!chunkTokens) {
+            const chunkBytes = config2.chunkBytes;
+            if (!chunkBytes) {
               await runObserve(threadId, mastraMessages);
               return "Observation cycle triggered. Check om_status for results.";
             }
-            const tokenCounter = new TokenCounter;
             const chunks = [];
             let currentChunk = [];
-            let currentTokens = 0;
+            let currentBytes = 0;
             for (const msg of mastraMessages) {
-              const msgTokens = tokenCounter.countMessages([msg]);
-              if (currentTokens + msgTokens > chunkTokens && currentChunk.length > 0) {
+              const msgBytes = Buffer.byteLength(JSON.stringify(msg), "utf8");
+              if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
                 chunks.push(currentChunk);
                 currentChunk = [msg];
-                currentTokens = msgTokens;
+                currentBytes = msgBytes;
               } else {
                 currentChunk.push(msg);
-                currentTokens += msgTokens;
+                currentBytes += msgBytes;
               }
             }
             if (currentChunk.length > 0)
@@ -180082,9 +180081,9 @@ ${OBSERVATION_CONTINUATION_HINT}`);
               await runObserve(threadId, mastraMessages);
               return "Observation cycle triggered (single chunk). Check om_status for results.";
             }
-            omLog(`[observe] chunked into ${chunks.length} chunks of ~${chunkTokens} tokens each`);
+            omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
             ctx.client.tui.showToast({
-              body: { title: "Mastra OM", message: `Observing in ${chunks.length} chunks...`, variant: "info", duration: 5000 }
+              body: { title: "Mastra OM", message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: "info", duration: 5000 }
             });
             const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
             const reflectAt = Math.floor(refThreshold * 0.8);
