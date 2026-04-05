@@ -178352,8 +178352,49 @@ ${OBSERVATION_CONTINUATION_HINT}`);
               return "No messages to observe.";
             const mastraMessages = convertMessages2(resp.data, threadId);
             await backupObservations(threadId, "pre-observe");
-            await runObserve(threadId, mastraMessages);
-            return "Observation cycle triggered. Check memory_status for results.";
+            const chunkBytes = config2.chunkBytes;
+            if (!chunkBytes) {
+              await runObserve(threadId, mastraMessages);
+              return "Observation cycle triggered. Check om_status for results.";
+            }
+            const chunks = [];
+            let currentChunk = [];
+            let currentBytes = 0;
+            for (const msg of mastraMessages) {
+              const msgBytes = Buffer.byteLength(JSON.stringify(msg), "utf8");
+              if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
+                chunks.push(currentChunk);
+                currentChunk = [msg];
+                currentBytes = msgBytes;
+              } else {
+                currentChunk.push(msg);
+                currentBytes += msgBytes;
+              }
+            }
+            if (currentChunk.length > 0)
+              chunks.push(currentChunk);
+            if (chunks.length === 1) {
+              await runObserve(threadId, mastraMessages);
+              return "Observation cycle triggered (single chunk). Check om_status for results.";
+            }
+            omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
+            ctx.client.tui.showToast({
+              body: { title: "Mastra OM", message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: "info", duration: 5000 }
+            });
+            const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
+            const reflectAt = Math.floor(refThreshold * 0.8);
+            for (let i = 0;i < chunks.length; i++) {
+              omLog(`[observe] processing chunk ${i + 1}/${chunks.length} (${chunks[i].length} messages)`);
+              await runObserve(threadId, chunks[i]);
+              if (i < chunks.length - 1) {
+                const record3 = await om.getRecord(threadId);
+                if (record3 && (record3.observationTokenCount ?? 0) >= reflectAt) {
+                  omLog(`[observe] observations at ${record3.observationTokenCount} tokens, reflecting before next chunk`);
+                  await om.reflect(threadId);
+                }
+              }
+            }
+            return `Observation complete — processed ${chunks.length} chunks. Check om_status for results.`;
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             lastError = msg;
@@ -178393,6 +178434,43 @@ ${OBSERVATION_CONTINUATION_HINT}`);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `Prune failed: ${msg}`;
+          }
+        }
+      }),
+      om_reset: tool5({
+        description: "Reset observational memory for this session to a clean slate. Backs up current state first so it can be restored via om_restore.",
+        args: {},
+        async execute(_args, context2) {
+          const threadId = context2.sessionID;
+          try {
+            const db = store.turso;
+            if (!db)
+              return "Raw DB access unavailable.";
+            await backupObservations(threadId, "pre-reset");
+            await db.execute({
+              sql: `UPDATE mastra_observational_memory SET
+                      activeObservations = '',
+                      generationCount = 0,
+                      observationTokenCount = 0,
+                      lastObservedAt = NULL,
+                      lastReflectionAt = NULL,
+                      pendingMessageTokens = 0,
+                      observedMessageIds = '[]',
+                      bufferedObservations = NULL,
+                      bufferedObservationTokens = 0,
+                      bufferedMessageIds = NULL,
+                      bufferedReflection = NULL,
+                      bufferedReflectionTokens = 0,
+                      bufferedReflectionInputTokens = 0,
+                      reflectedObservationLineCount = 0
+                    WHERE lookupKey = ?`,
+              args: [threadId]
+            });
+            omLog(`[reset] observations cleared for ${threadId}`);
+            return "✅ Observational memory reset. Previous state saved to backup slot 1 — use om_restore to recover if needed.";
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `Reset failed: ${msg}`;
           }
         }
       }),
