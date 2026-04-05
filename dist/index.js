@@ -178159,7 +178159,7 @@ var MastraPlugin = async (ctx) => {
   const om = new ObservationalMemory(omOptions);
   omLog(`[init] ObservationalMemory created, model=${config2.model ?? "default"}`);
   try {
-    const db = store.turso;
+    const db = store.client;
     if (db) {
       await db.execute({
         sql: `CREATE TABLE IF NOT EXISTS mastra_om_backups (
@@ -178187,7 +178187,7 @@ var MastraPlugin = async (ctx) => {
       const generationCount = record3?.generationCount ?? 0;
       const lookupKey = threadId;
       const savedAt = new Date().toISOString();
-      const db = store.turso;
+      const db = store.client;
       if (!db)
         return;
       await db.execute({
@@ -178471,7 +178471,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
         async execute(_args, context2) {
           const threadId = context2.sessionID;
           try {
-            const db = store.turso;
+            const db = store.client;
             if (!db)
               return "Raw DB access unavailable.";
             await backupObservations(threadId, "pre-reset");
@@ -178509,7 +178509,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
           const threadId = context2.sessionID;
           const slot = args.slot === 2 ? 2 : 1;
           try {
-            const db = store.turso;
+            const db = store.client;
             if (!db)
               return "Raw DB access unavailable.";
             const result = await db.execute({

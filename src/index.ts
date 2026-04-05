@@ -293,7 +293,7 @@ export const MastraPlugin: Plugin = async ctx => {
 
   // Ensure backup table exists
   try {
-    const db = (store as any).turso;
+    const db = (store as any).client;
     if (db) {
       await db.execute({
         sql: `CREATE TABLE IF NOT EXISTS mastra_om_backups (
@@ -322,7 +322,7 @@ export const MastraPlugin: Plugin = async ctx => {
       const generationCount = record?.generationCount ?? 0;
       const lookupKey = threadId;
       const savedAt = new Date().toISOString();
-      const db = (store as any).turso;
+      const db = (store as any).client;
       if (!db) return;
 
       // Rotate: slot 1 → slot 2, then write current → slot 1
@@ -623,7 +623,7 @@ export const MastraPlugin: Plugin = async ctx => {
         async execute(_args, context) {
           const threadId = context.sessionID;
           try {
-            const db = (store as any).turso;
+            const db = (store as any).client;
             if (!db) return 'Raw DB access unavailable.';
             await backupObservations(threadId, 'pre-reset');
             await db.execute({
@@ -661,7 +661,7 @@ export const MastraPlugin: Plugin = async ctx => {
           const threadId = context.sessionID;
           const slot = args.slot === 2 ? 2 : 1;
           try {
-            const db = (store as any).turso;
+            const db = (store as any).client;
             if (!db) return 'Raw DB access unavailable.';
             const result = await db.execute({
               sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
