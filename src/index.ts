@@ -216,26 +216,30 @@ export const MastraPlugin: Plugin = async ctx => {
       }
     }
 
-    // Also pull from OpenCode's provider store — fills in any remaining gaps
-    try {
-      const providersResponse = await ctx.client.config.providers();
-      if (providersResponse.data) {
-        for (const provider of providersResponse.data.providers) {
-          // Fix upstream bug: provider.key may be undefined when env.length > 1
-          // Use any available key from the provider
-          const key = provider.key ?? (provider as any).apiKey ?? (provider as any).token;
-          if (key && provider.env) {
-            for (const envVar of provider.env) {
-              if (!process.env[envVar]) {
-                process.env[envVar] = key;
-                omLog(`[credentials] set ${envVar} from provider store`);
+    // Pull from OpenCode's provider store only if no apiKey is hardcoded
+    // Skip entirely when config.apiKey is set — avoids potential hang on provider API call
+    if (!config.apiKey) {
+      try {
+        const providersResponse = await Promise.race([
+          ctx.client.config.providers(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+        ]);
+        if (providersResponse.data) {
+          for (const provider of providersResponse.data.providers) {
+            const key = provider.key ?? (provider as any).apiKey ?? (provider as any).token;
+            if (key && provider.env) {
+              for (const envVar of provider.env) {
+                if (!process.env[envVar]) {
+                  process.env[envVar] = key;
+                  omLog(`[credentials] set ${envVar} from provider store`);
+                }
               }
             }
           }
         }
+      } catch (e) {
+        omLog(`[credentials] provider store unavailable: ${e}`);
       }
-    } catch (e) {
-      omLog(`[credentials] provider store unavailable: ${e}`);
     }
 
     credentialsReady = true;

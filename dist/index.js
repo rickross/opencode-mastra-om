@@ -179766,23 +179766,28 @@ var MastraPlugin = async (ctx) => {
         omLog(`[credentials] set ${envVars.join(", ")} from config.apiKey`);
       }
     }
-    try {
-      const providersResponse = await ctx.client.config.providers();
-      if (providersResponse.data) {
-        for (const provider of providersResponse.data.providers) {
-          const key = provider.key ?? provider.apiKey ?? provider.token;
-          if (key && provider.env) {
-            for (const envVar of provider.env) {
-              if (!process.env[envVar]) {
-                process.env[envVar] = key;
-                omLog(`[credentials] set ${envVar} from provider store`);
+    if (!config2.apiKey) {
+      try {
+        const providersResponse = await Promise.race([
+          ctx.client.config.providers(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
+        ]);
+        if (providersResponse.data) {
+          for (const provider of providersResponse.data.providers) {
+            const key = provider.key ?? provider.apiKey ?? provider.token;
+            if (key && provider.env) {
+              for (const envVar of provider.env) {
+                if (!process.env[envVar]) {
+                  process.env[envVar] = key;
+                  omLog(`[credentials] set ${envVar} from provider store`);
+                }
               }
             }
           }
         }
+      } catch (e2) {
+        omLog(`[credentials] provider store unavailable: ${e2}`);
       }
-    } catch (e2) {
-      omLog(`[credentials] provider store unavailable: ${e2}`);
     }
     credentialsReady = true;
     omLog(`[credentials] resolved. GOOGLE_GENERATIVE_AI_API_KEY=${process.env.GOOGLE_GENERATIVE_AI_API_KEY ? "set" : "missing"}`);
