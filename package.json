@@ -50,7 +50,7 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk --external @mastra/core --external @mastra/libsql --external @mastra/memory",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   }
