@@ -180053,7 +180053,6 @@ ${OBSERVATION_CONTINUATION_HINT}`);
     }
   };
 };
-var src_default = MastraPlugin;
 export {
-  src_default as default
+  MastraPlugin
 };

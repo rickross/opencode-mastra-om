@@ -163,7 +163,7 @@ function resolveThreshold(t: number | { min: number; max: number }): number {
   return typeof t === 'number' ? t : t.max;
 }
 
-const MastraPlugin: Plugin = async ctx => {
+export const MastraPlugin: Plugin = async ctx => {
   const config = await loadConfig(ctx.directory);
 
   // Debug logger
@@ -519,4 +519,4 @@ const MastraPlugin: Plugin = async ctx => {
   };
 };
 
-export default MastraPlugin;
+
