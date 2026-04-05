@@ -635,26 +635,15 @@ export const MastraPlugin: Plugin = async ctx => {
             const db = (store as any).client;
             if (!db) return 'Raw DB access unavailable.';
             await backupObservations(threadId, 'pre-reset');
-            await db.execute({
-              sql: `UPDATE mastra_observational_memory SET
-                      activeObservations = '',
-                      generationCount = 0,
-                      observationTokenCount = 0,
-                      lastObservedAt = NULL,
-                      lastReflectionAt = NULL,
-                      pendingMessageTokens = 0,
-                      observedMessageIds = '[]',
-                      bufferedObservations = NULL,
-                      bufferedObservationTokens = 0,
-                      bufferedMessageIds = NULL,
-                      bufferedReflection = NULL,
-                      bufferedReflectionTokens = 0,
-                      bufferedReflectionInputTokens = 0,
-                      reflectedObservationLineCount = 0
-                     WHERE lookupKey = ?`,
+            const result = await db.execute({
+              sql: `DELETE FROM mastra_observational_memory WHERE lookupKey = ?`,
               args: [lookupKey],
             });
-            omLog(`[reset] observations cleared for ${lookupKey}`);
+            const deleted = result.rowsAffected ?? 0;
+            omLog(`[reset] deleted ${deleted} row(s) from mastra_observational_memory for ${lookupKey}`);
+            // Recreate a fresh record so Mastra doesn't error on next observe
+            await om.getOrCreateRecord(threadId);
+            omLog(`[reset] fresh record created for ${threadId}`);
             return '✅ Observational memory reset. Previous state saved to backup slot 1 — use om_restore to recover if needed.';
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
