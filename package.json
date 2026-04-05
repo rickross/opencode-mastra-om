@@ -15,7 +15,7 @@
   "author": "Rick Ross",
   "repository": {
     "type": "git",
-    "url": "https://github.com/activated-intelligence/opencode-mastra-om"
+    "url": "https://github.com/rickross/opencode-mastra-om"
   },
   "main": "dist/index.js",
   "exports": {
