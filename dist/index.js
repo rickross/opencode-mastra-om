@@ -179843,15 +179843,15 @@ var MastraPlugin = async (ctx) => {
         lastReflectionAt: record3.lastReflectionAt ?? null,
         pendingMessageTokens: record3.pendingMessageTokens ?? 0,
         observedMessageIds: record3.observedMessageIds ?? "[]",
-        trigger,
+        triggerEvent: trigger,
         savedAt: new Date().toISOString()
       };
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
               SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, observationTokenCount,
-                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt
+                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt
               FROM mastra_om_backups WHERE lookupKey = ? AND slot = 1
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -179861,14 +179861,14 @@ var MastraPlugin = async (ctx) => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
+                triggerEvent = excluded.triggerEvent,
                 savedAt = excluded.savedAt`,
         args: [threadId]
       });
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
               VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -179878,7 +179878,7 @@ var MastraPlugin = async (ctx) => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
+                triggerEvent = excluded.triggerEvent,
                 savedAt = excluded.savedAt`,
         args: [
           threadId,
@@ -180188,7 +180188,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
               `✅ Restored from slot ${slot}`,
               `  Generation: ${row.generationCount}`,
               `  Saved at: ${row.savedAt}`,
-              `  Trigger: ${row.trigger}`,
+              `  Trigger: ${row.triggerEvent}`,
               `  Observation tokens: ${row.observationTokenCount}`,
               `  Last observed: ${row.lastObservedAt ?? "never"}`,
               `  Last reflection: ${row.lastReflectionAt ?? "never"}`

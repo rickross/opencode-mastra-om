@@ -94,7 +94,8 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    * Maximum bytes per observation chunk. When set, om_observe splits unobserved
    * messages into chunks of this size and processes them sequentially.
    * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
-   * E.g., 2000000 (2MB) for Gemini 2.5 Flash, 400000 (400KB) for Claude.
+   * Conservative values produce better quality observations than pushing model limits:
+   * E.g., 500000 (500KB) for Gemini 2.5 Flash, 200000 (200KB) for Claude, 100000 (100KB) for smaller models.
    * If not set, no chunking is applied (default behavior).
    */
   chunkBytes?: number;
@@ -306,7 +307,7 @@ export const MastraPlugin: Plugin = async ctx => {
         lastReflectionAt: record.lastReflectionAt ?? null,
         pendingMessageTokens: record.pendingMessageTokens ?? 0,
         observedMessageIds: record.observedMessageIds ?? '[]',
-        trigger,
+        triggerEvent: trigger,
         savedAt: new Date().toISOString(),
       };
 
@@ -314,9 +315,9 @@ export const MastraPlugin: Plugin = async ctx => {
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
               SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, observationTokenCount,
-                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt
+                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt
               FROM mastra_om_backups WHERE lookupKey = ? AND slot = 1
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -326,14 +327,14 @@ export const MastraPlugin: Plugin = async ctx => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
+                triggerEvent = excluded.triggerEvent,
                 savedAt = excluded.savedAt`,
         args: [threadId],
       });
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
               VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -343,7 +344,7 @@ export const MastraPlugin: Plugin = async ctx => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
+                triggerEvent = excluded.triggerEvent,
                 savedAt = excluded.savedAt`,
         args: [threadId, snap.generationCount, snap.observations, snap.observationTokenCount,
                snap.lastObservedAt, snap.lastReflectionAt, snap.pendingMessageTokens,
@@ -670,7 +671,7 @@ export const MastraPlugin: Plugin = async ctx => {
               `✅ Restored from slot ${slot}`,
               `  Generation: ${row.generationCount}`,
               `  Saved at: ${row.savedAt}`,
-              `  Trigger: ${row.trigger}`,
+              `  Trigger: ${row.triggerEvent}`,
               `  Observation tokens: ${row.observationTokenCount}`,
               `  Last observed: ${row.lastObservedAt ?? 'never'}`,
               `  Last reflection: ${row.lastReflectionAt ?? 'never'}`,
