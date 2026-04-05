@@ -50,7 +50,7 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && node -e \"const v=require('./package.json').version; const fs=require('fs'); fs.mkdirSync('versions/v'+v,{recursive:true}); fs.copyFileSync('dist/index.js','versions/v'+v+'/index.js'); console.log('saved versions/v'+v+'/index.js')\"",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   }
