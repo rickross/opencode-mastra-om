@@ -1,20 +1,57 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode-mastra-om",
   "version": "0.1.0",
-  "description": "Enhanced Mastra Observational Memory plugin for OpenCode",
   "type": "module",
-  "main": "src/mastra-om.ts",
-  "scripts": {
-    "typecheck": "tsc --noEmit"
+  "license": "MIT",
+  "description": "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
+  "keywords": [
+    "opencode",
+    "plugin",
+    "memory",
+    "mastra",
+    "observational-memory"
+  ],
+  "author": "Rick Ross",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activated-intelligence/opencode-mastra-om"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./server": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "opencode": {
+    "type": "plugin",
+    "hooks": [
+      "tool",
+      "experimental.chat.messages.transform",
+      "experimental.chat.system.transform",
+      "event"
+    ]
   },
   "dependencies": {
     "@mastra/core": "^1.21.0",
-    "@mastra/libsql": "^0.1.0",
-    "@mastra/memory": "^0.1.0",
-    "@opencode-ai/plugin": "latest",
-    "@opencode-ai/sdk": "latest"
+    "@mastra/libsql": "^1.7.3",
+    "@mastra/memory": "^1.13.0",
+    "@opencode-ai/plugin": "^1.3.11",
+    "@opencode-ai/sdk": "^1.3.11"
   },
   "devDependencies": {
+    "@tsconfig/node22": "^22.0.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
     "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk --external @mastra/core --external @mastra/libsql --external @mastra/memory",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   }
 }
