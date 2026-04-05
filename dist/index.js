@@ -178168,6 +178168,29 @@ var MastraPlugin = async (ctx) => {
       }
       om = new ObservationalMemory(omOptions2);
       omLog(`[init] ObservationalMemory created, model=${config2.model ?? "default"}`);
+      try {
+        const db = store.turso;
+        if (db) {
+          await db.execute(`CREATE TABLE IF NOT EXISTS mastra_om_backups (
+            id TEXT PRIMARY KEY,
+            lookupKey TEXT NOT NULL,
+            slot INTEGER NOT NULL,
+            generationCount INTEGER NOT NULL DEFAULT 0,
+            observations TEXT,
+            observationTokenCount INTEGER NOT NULL DEFAULT 0,
+            lastObservedAt TEXT,
+            lastReflectionAt TEXT,
+            pendingMessageTokens INTEGER NOT NULL DEFAULT 0,
+            observedMessageIds TEXT NOT NULL DEFAULT '[]',
+            triggerEvent TEXT,
+            savedAt TEXT NOT NULL,
+            UNIQUE(lookupKey, slot)
+          )`);
+          omLog(`[init] mastra_om_backups table ready`);
+        }
+      } catch (tableErr) {
+        omLog(`[init] WARNING: could not create mastra_om_backups: ${tableErr instanceof Error ? tableErr.message : String(tableErr)}`);
+      }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
