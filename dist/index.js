@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.39",
+  version: "0.1.40",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178407,6 +178407,7 @@ var MastraPlugin = async (ctx) => {
         if (!observations)
           return;
         const optimized = optimizeObservationsForContext(observations);
+        omLog(`[system] injecting ${optimized.length} chars of observations into system prompt`);
         output.system.push(`${OBSERVATION_CONTEXT_PROMPT}
 
 <observations>
@@ -178416,7 +178417,9 @@ ${optimized}
 ${OBSERVATION_CONTEXT_INSTRUCTIONS}
 
 ${OBSERVATION_CONTINUATION_HINT}`);
-      } catch {}
+      } catch (err) {
+        omLog(`[system] injection failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     },
     tool: {
       om_status: tool5({

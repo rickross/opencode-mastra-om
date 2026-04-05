@@ -489,17 +489,20 @@ export const MastraPlugin: Plugin = async ctx => {
       }
     },
 
-    'experimental.chat.system.transform': async (input, output) => {
+     'experimental.chat.system.transform': async (input, output) => {
       const sessionId = input.sessionID;
       if (!sessionId) return;
       try {
         const observations = await om.getObservations(sessionId);
         if (!observations) return;
         const optimized = optimizeObservationsForContext(observations);
+        omLog(`[system] injecting ${optimized.length} chars of observations into system prompt`);
         output.system.push(
           `${OBSERVATION_CONTEXT_PROMPT}\n\n<observations>\n${optimized}\n</observations>\n\n${OBSERVATION_CONTEXT_INSTRUCTIONS}\n\n${OBSERVATION_CONTINUATION_HINT}`,
         );
-      } catch {}
+      } catch (err) {
+        omLog(`[system] injection failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     },
 
     tool: {
