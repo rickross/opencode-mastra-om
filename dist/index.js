@@ -179793,43 +179793,54 @@ var MastraPlugin = async (ctx) => {
     omLog(`[credentials] resolved. GOOGLE_GENERATIVE_AI_API_KEY=${process.env.GOOGLE_GENERATIVE_AI_API_KEY ? "set" : "missing"}`);
   };
   let store;
-  if (config2.storageUrl && (config2.storageUrl.startsWith("postgresql://") || config2.storageUrl.startsWith("postgres://"))) {
-    omLog(`[init] using PostgreSQL storage: ${config2.storageUrl.replace(/:\/\/[^@]+@/, "://<redacted>@")}`);
-    const pgMod = await new Function('return import("@mastra/pg")')();
-    const PostgresStore = pgMod.PostgresStore;
-    store = new PostgresStore({ connectionString: config2.storageUrl });
-    await store.init();
-  } else {
-    const url2 = config2.storageUrl ?? `file:${join5(ctx.directory, config2.storagePath ?? DEFAULT_STORAGE_PATH)}`;
-    if (!config2.storageUrl) {
-      const dbAbsolutePath = join5(ctx.directory, config2.storagePath ?? DEFAULT_STORAGE_PATH);
-      await mkdir2(dirname4(dbAbsolutePath), { recursive: true });
+  let om;
+  let initFailed = false;
+  try {
+    if (config2.storageUrl && (config2.storageUrl.startsWith("postgresql://") || config2.storageUrl.startsWith("postgres://"))) {
+      omLog(`[init] using PostgreSQL storage: ${config2.storageUrl.replace(/:\/\/[^@]+@/, "://<redacted>@")}`);
+      const pgMod = await new Function('return import("@mastra/pg")')();
+      const PostgresStore = pgMod.PostgresStore;
+      store = new PostgresStore({ connectionString: config2.storageUrl });
+      await store.init();
+    } else {
+      const url2 = config2.storageUrl ?? `file:${join5(ctx.directory, config2.storagePath ?? DEFAULT_STORAGE_PATH)}`;
+      if (!config2.storageUrl) {
+        const dbAbsolutePath = join5(ctx.directory, config2.storagePath ?? DEFAULT_STORAGE_PATH);
+        await mkdir2(dirname4(dbAbsolutePath), { recursive: true });
+      }
+      omLog(`[init] using SQLite/LibSQL storage: ${url2}`);
+      store = new LibSQLStore({ id: "mastra-om", url: url2 });
+      await store.init();
     }
-    omLog(`[init] using SQLite/LibSQL storage: ${url2}`);
-    store = new LibSQLStore({ id: "mastra-om", url: url2 });
-    await store.init();
-  }
-  const storage = await store.getStore("memory");
-  if (!storage)
-    throw new Error(`mastra-om: failed to initialize storage`);
-  const omOptions = {
-    storage,
-    scope: config2.scope,
-    shareTokenBudget: config2.shareTokenBudget,
-    observation: {
-      ...config2.observation,
-      ...config2.observationModel ? { model: config2.observationModel } : {}
-    },
-    reflection: {
-      ...config2.reflection,
-      ...config2.reflectionModel ? { model: config2.reflectionModel } : {}
+    const storage = await store.getStore("memory");
+    if (!storage) {
+      omLog(`[init] ERROR: failed to get storage — OM disabled`);
+      initFailed = true;
+    } else {
+      const omOptions2 = {
+        storage,
+        scope: config2.scope,
+        shareTokenBudget: config2.shareTokenBudget,
+        observation: {
+          ...config2.observation,
+          ...config2.observationModel ? { model: config2.observationModel } : {}
+        },
+        reflection: {
+          ...config2.reflection,
+          ...config2.reflectionModel ? { model: config2.reflectionModel } : {}
+        }
+      };
+      if (config2.model && !config2.observationModel && !config2.reflectionModel) {
+        omOptions2.model = config2.model;
+      }
+      om = new ObservationalMemory(omOptions2);
+      omLog(`[init] ObservationalMemory created, model=${config2.model ?? "default"}`);
     }
-  };
-  if (config2.model && !config2.observationModel && !config2.reflectionModel) {
-    omOptions.model = config2.model;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    omLog(`[init] ERROR during storage init: ${msg} — OM disabled`);
+    initFailed = true;
   }
-  const om = new ObservationalMemory(omOptions);
-  omLog(`[init] ObservationalMemory created, model=${config2.model ?? "default"}`);
   const backupObservations = async (threadId, trigger) => {
     try {
       const record3 = await om.getRecord(threadId);
@@ -179935,6 +179946,8 @@ var MastraPlugin = async (ctx) => {
   return {
     event: async ({ event }) => {
       omLog(`[event] received event type=${event.type}`);
+      if (initFailed || !om)
+        return;
       if (event.type === "session.created") {
         const sessionId = event.properties.info.id;
         omLog(`[session] creating record for ${sessionId}`);
@@ -179949,6 +179962,10 @@ var MastraPlugin = async (ctx) => {
     },
     "experimental.chat.messages.transform": async (_input, output) => {
       omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
+      if (initFailed || !om) {
+        omLog(`[transform] OM not initialized, skipping`);
+        return;
+      }
       const sessionId = output.messages[0]?.info.sessionID;
       if (!sessionId) {
         omLog(`[transform] no sessionId, skipping`);
@@ -179988,6 +180005,10 @@ var MastraPlugin = async (ctx) => {
     },
     "experimental.chat.system.transform": async (input, output) => {
       omLog(`[system.transform] called, sessionID=${input.sessionID}`);
+      if (initFailed || !om) {
+        omLog(`[system.transform] OM not initialized, skipping`);
+        return;
+      }
       const sessionId = input.sessionID;
       if (!sessionId) {
         omLog(`[system.transform] no sessionId, skipping`);

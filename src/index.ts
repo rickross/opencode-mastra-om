@@ -248,50 +248,59 @@ export const MastraPlugin: Plugin = async ctx => {
 
   // Storage — supports PostgreSQL or SQLite
   let store: any;
-  if (config.storageUrl && (config.storageUrl.startsWith('postgresql://') || config.storageUrl.startsWith('postgres://'))) {
-    omLog(`[init] using PostgreSQL storage: ${config.storageUrl.replace(/:\/\/[^@]+@/, '://<redacted>@')}`);
-    // Dynamically import @mastra/pg — not available until installed
-    // Using Function constructor to bypass TypeScript static analysis
-    const pgMod: any = await new Function('return import("@mastra/pg")')();
-    const PostgresStore = pgMod.PostgresStore;
-    store = new PostgresStore({ connectionString: config.storageUrl });
-    await store.init();
-  } else {
-    const url = config.storageUrl ?? `file:${join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH)}`;
-    if (!config.storageUrl) {
-      const dbAbsolutePath = join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH);
-      await mkdir(dirname(dbAbsolutePath), { recursive: true });
+  let om: any;
+  let initFailed = false;
+
+  try {
+    if (config.storageUrl && (config.storageUrl.startsWith('postgresql://') || config.storageUrl.startsWith('postgres://'))) {
+      omLog(`[init] using PostgreSQL storage: ${config.storageUrl.replace(/:\/\/[^@]+@/, '://<redacted>@')}`);
+      const pgMod: any = await new Function('return import("@mastra/pg")')();
+      const PostgresStore = pgMod.PostgresStore;
+      store = new PostgresStore({ connectionString: config.storageUrl });
+      await store.init();
+    } else {
+      const url = config.storageUrl ?? `file:${join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH)}`;
+      if (!config.storageUrl) {
+        const dbAbsolutePath = join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH);
+        await mkdir(dirname(dbAbsolutePath), { recursive: true });
+      }
+      omLog(`[init] using SQLite/LibSQL storage: ${url}`);
+      store = new LibSQLStore({ id: 'mastra-om', url });
+      await store.init();
     }
-    omLog(`[init] using SQLite/LibSQL storage: ${url}`);
-    store = new LibSQLStore({ id: 'mastra-om', url });
-    await store.init();
+
+    const storage = await store.getStore('memory');
+    if (!storage) {
+      omLog(`[init] ERROR: failed to get storage — OM disabled`);
+      initFailed = true;
+    } else {
+      // Build OM config — support separate observation/reflection models
+      const omOptions: ObservationalMemoryOptions = {
+        storage,
+        scope: config.scope,
+        shareTokenBudget: config.shareTokenBudget,
+        observation: {
+          ...config.observation,
+          ...(config.observationModel ? { model: config.observationModel } : {}),
+        },
+        reflection: {
+          ...config.reflection,
+          ...(config.reflectionModel ? { model: config.reflectionModel } : {}),
+        },
+      };
+
+      if (config.model && !config.observationModel && !config.reflectionModel) {
+        omOptions.model = config.model;
+      }
+
+      om = new ObservationalMemory(omOptions);
+      omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    omLog(`[init] ERROR during storage init: ${msg} — OM disabled`);
+    initFailed = true;
   }
-  const storage = await store.getStore('memory');
-  if (!storage) throw new Error(`mastra-om: failed to initialize storage`);
-
-  // Build OM config — support separate observation/reflection models
-  const omOptions: ObservationalMemoryOptions = {
-    storage,
-    scope: config.scope,
-    shareTokenBudget: config.shareTokenBudget,
-    observation: {
-      ...config.observation,
-      ...(config.observationModel ? { model: config.observationModel } : {}),
-    },
-    reflection: {
-      ...config.reflection,
-      ...(config.reflectionModel ? { model: config.reflectionModel } : {}),
-    },
-  };
-
-  // Set top-level model only if not overriding both separately
-  if (config.model && !config.observationModel && !config.reflectionModel) {
-    omOptions.model = config.model;
-  }
-
-  const om = new ObservationalMemory(omOptions);
-
-  omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
 
   // Helper: backup current observations before observe/reflect
   const backupObservations = async (threadId: string, trigger: string) => {
@@ -395,6 +404,7 @@ export const MastraPlugin: Plugin = async ctx => {
   return {
     event: async ({ event }) => {
       omLog(`[event] received event type=${event.type}`);
+      if (initFailed || !om) return;
       if (event.type === 'session.created') {
         const sessionId = event.properties.info.id;
         omLog(`[session] creating record for ${sessionId}`);
@@ -410,6 +420,7 @@ export const MastraPlugin: Plugin = async ctx => {
 
     'experimental.chat.messages.transform': async (_input, output) => {
       omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
+      if (initFailed || !om) { omLog(`[transform] OM not initialized, skipping`); return; }
       const sessionId = output.messages[0]?.info.sessionID;
       if (!sessionId) { omLog(`[transform] no sessionId, skipping`); return; }
       omLog(`[transform] sessionId=${sessionId}`);
@@ -450,6 +461,7 @@ export const MastraPlugin: Plugin = async ctx => {
 
     'experimental.chat.system.transform': async (input, output) => {
       omLog(`[system.transform] called, sessionID=${input.sessionID}`);
+      if (initFailed || !om) { omLog(`[system.transform] OM not initialized, skipping`); return; }
       const sessionId = input.sessionID;
       if (!sessionId) { omLog(`[system.transform] no sessionId, skipping`); return; }
       try {
