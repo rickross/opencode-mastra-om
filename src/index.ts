@@ -385,6 +385,67 @@ export const MastraPlugin: Plugin = async ctx => {
     });
   };
 
+  // Helper: run observation with chunking if chunkBytes is set
+  const runObserveChunked = async (sessionId: string, messages: ReturnType<typeof convertMessages>) => {
+    const chunkBytes = config.chunkBytes;
+    if (!chunkBytes) {
+      await runObserve(sessionId, messages);
+      return;
+    }
+
+    const chunks: (typeof messages)[] = [];
+    let currentChunk: typeof messages = [];
+    let currentBytes = 0;
+    for (const msg of messages) {
+      const msgBytes = Buffer.byteLength(JSON.stringify(msg), 'utf8');
+      if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = [msg];
+        currentBytes = msgBytes;
+      } else {
+        currentChunk.push(msg);
+        currentBytes += msgBytes;
+      }
+    }
+    if (currentChunk.length > 0) chunks.push(currentChunk);
+
+    if (chunks.length === 1) {
+      await runObserve(sessionId, messages);
+      return;
+    }
+
+    omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
+    void ctx.client.tui.showToast({
+      body: { title: 'Mastra OM', message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: 'info', duration: 5000 },
+    });
+
+    const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
+    const reflectAt = Math.floor(refThreshold * 0.8);
+    const chunkDelay = config.chunkDelay ?? 200;
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkBytes2 = chunks[i]!.reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), 'utf8'), 0);
+      const before = await om.getRecord(sessionId);
+      const tokensBefore = before?.observationTokenCount ?? 0;
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      const t0 = Date.now();
+      await runObserve(sessionId, chunks[i]!);
+      const elapsed = Date.now() - t0;
+      const after = await om.getRecord(sessionId);
+      const tokensAfter = after?.observationTokenCount ?? 0;
+      const delta = tokensAfter - tokensBefore;
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} END — ${elapsed}ms, obs: ${tokensBefore} → ${tokensAfter} (${delta >= 0 ? '+' : ''}${delta})`);
+      if (i < chunks.length - 1) {
+        if (tokensAfter >= reflectAt) {
+          omLog(`[observe] obs at ${tokensAfter} >= reflectAt ${reflectAt}, reflecting before next chunk`);
+          await om.reflect(sessionId);
+        }
+        omLog(`[observe] waiting ${chunkDelay}ms`);
+        await new Promise(resolve => setTimeout(resolve, chunkDelay));
+      }
+    }
+  };
+
   return {
     event: async ({ event }) => {
       if (event.type === 'session.created') {
@@ -408,7 +469,7 @@ export const MastraPlugin: Plugin = async ctx => {
       try {
         const mastraMessages = convertMessages(output.messages, sessionId);
         if (mastraMessages.length > 0) {
-          await runObserve(sessionId, mastraMessages);
+          await runObserveChunked(sessionId, mastraMessages);
         }
 
         const record = await om.getRecord(sessionId);
@@ -518,66 +579,8 @@ export const MastraPlugin: Plugin = async ctx => {
             if (!resp.data || resp.data.length === 0) return 'No messages to observe.';
             const mastraMessages = convertMessages(resp.data, threadId);
             await backupObservations(threadId, 'pre-observe');
-
-            const chunkBytes = config.chunkBytes;
-            if (!chunkBytes) {
-              await runObserve(threadId, mastraMessages);
-              return 'Observation cycle triggered. Check om_status for results.';
-            }
-
-            const chunks: (typeof mastraMessages)[] = [];
-            let currentChunk: typeof mastraMessages = [];
-            let currentBytes = 0;
-            for (const msg of mastraMessages) {
-              const msgBytes = Buffer.byteLength(JSON.stringify(msg), 'utf8');
-              if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
-                chunks.push(currentChunk);
-                currentChunk = [msg];
-                currentBytes = msgBytes;
-              } else {
-                currentChunk.push(msg);
-                currentBytes += msgBytes;
-              }
-            }
-            if (currentChunk.length > 0) chunks.push(currentChunk);
-
-            if (chunks.length === 1) {
-              await runObserve(threadId, mastraMessages);
-              return 'Observation cycle triggered (single chunk). Check om_status for results.';
-            }
-
-            omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
-            void ctx.client.tui.showToast({
-              body: { title: 'Mastra OM', message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: 'info', duration: 5000 },
-            });
-
-            const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
-            const reflectAt = Math.floor(refThreshold * 0.8);
-            const chunkDelay = config.chunkDelay ?? 200;
-
-            for (let i = 0; i < chunks.length; i++) {
-              const chunkBytes2 = chunks[i]!.reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), 'utf8'), 0);
-              const before = await om.getRecord(threadId);
-              const tokensBefore = before?.observationTokenCount ?? 0;
-              const msgIds = chunks[i]!.map((m: any) => m.id).filter(Boolean);
-              omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens, firstMsgId=${msgIds[0] ?? 'none'}`);
-              const t0 = Date.now();
-              await runObserve(threadId, chunks[i]!);
-              const elapsed = Date.now() - t0;
-              const after = await om.getRecord(threadId);
-              const tokensAfter = after?.observationTokenCount ?? 0;
-              const delta = tokensAfter - tokensBefore;
-              omLog(`[observe] chunk ${i + 1}/${chunks.length} END — ${elapsed}ms elapsed, obs: ${tokensBefore} → ${tokensAfter} (${delta >= 0 ? '+' : ''}${delta})`);
-              if (i < chunks.length - 1) {
-                if (tokensAfter >= reflectAt) {
-                  omLog(`[observe] obs at ${tokensAfter} >= reflectAt ${reflectAt}, reflecting before next chunk`);
-                  await om.reflect(threadId);
-                }
-                omLog(`[observe] waiting ${chunkDelay}ms`);
-                await new Promise(resolve => setTimeout(resolve, chunkDelay));
-              }
-            }
-            return `Observation complete — processed ${chunks.length} chunks. Check om_status for results.`;
+            await runObserveChunked(threadId, mastraMessages);
+            return 'Observation complete. Check om_status for results.';
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             lastError = msg;
