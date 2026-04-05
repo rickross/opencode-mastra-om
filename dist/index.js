@@ -178065,7 +178065,16 @@ function resolveThreshold(t2) {
   return typeof t2 === "number" ? t2 : t2.max;
 }
 var MastraPlugin = async (ctx) => {
+  const emergencyLog = "/tmp/om-emergency.log";
+  try {
+    appendFileSync2(emergencyLog, `[${new Date().toISOString()}] plugin entry, pid=${process.pid}, dir=${ctx.directory}
+`);
+  } catch {}
   const config2 = await loadConfig(ctx.directory);
+  try {
+    appendFileSync2(emergencyLog, `[${new Date().toISOString()}] loadConfig done, logPath=${config2.logPath}, model=${config2.model}
+`);
+  } catch {}
   let logFile = null;
   if (config2.logPath) {
     logFile = join5(ctx.directory, config2.logPath);
@@ -178082,6 +178091,9 @@ var MastraPlugin = async (ctx) => {
         appendFileSync2(logFile, line);
       } catch {}
     }
+    try {
+      appendFileSync2(emergencyLog, line);
+    } catch {}
   };
   omLog(`[init] mastra-om plugin starting, pid=${process.pid}`);
   let lastError = null;

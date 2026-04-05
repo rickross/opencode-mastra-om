@@ -164,7 +164,12 @@ function resolveThreshold(t: number | { min: number; max: number }): number {
 }
 
 export const MastraPlugin: Plugin = async ctx => {
+  // Hardcoded emergency log — always write regardless of config
+  const emergencyLog = '/tmp/om-emergency.log';
+  try { appendFileSync(emergencyLog, `[${new Date().toISOString()}] plugin entry, pid=${process.pid}, dir=${ctx.directory}\n`); } catch {}
+
   const config = await loadConfig(ctx.directory);
+  try { appendFileSync(emergencyLog, `[${new Date().toISOString()}] loadConfig done, logPath=${config.logPath}, model=${config.model}\n`); } catch {}
 
   // Debug logger
   let logFile: string | null = null;
@@ -175,10 +180,11 @@ export const MastraPlugin: Plugin = async ctx => {
     logFile = join(ctx.directory, '.opencode/memory/om.log');
     mkdirSync(dirname(logFile), { recursive: true });
   }
-
+  // Also always log to emergency file
   const omLog = (msg: string) => {
     const line = `[${new Date().toISOString()}] ${msg}\n`;
     if (logFile) { try { appendFileSync(logFile, line); } catch {} }
+    try { appendFileSync(emergencyLog, line); } catch {}
   };
 
   omLog(`[init] mastra-om plugin starting, pid=${process.pid}`);
