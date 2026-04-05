@@ -178185,7 +178185,7 @@ var MastraPlugin = async (ctx) => {
       if (!observations)
         return;
       const generationCount = record3?.generationCount ?? 0;
-      const lookupKey = threadId;
+      const lookupKey = `thread:${threadId}`;
       const savedAt = new Date().toISOString();
       const db = store.client;
       if (!db)
@@ -178264,7 +178264,6 @@ var MastraPlugin = async (ctx) => {
       try {
         const mastraMessages = convertMessages2(output.messages, sessionId);
         if (mastraMessages.length > 0) {
-          await backupObservations(sessionId, "pre-auto-observe");
           await runObserve(sessionId, mastraMessages);
         }
         const record3 = await om.getRecord(sessionId);
@@ -178406,19 +178405,23 @@ ${OBSERVATION_CONTINUATION_HINT}`);
             const chunkDelay = config2.chunkDelay ?? 200;
             for (let i = 0;i < chunks.length; i++) {
               const chunkBytes2 = chunks[i].reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), "utf8"), 0);
-              omLog(`[observe] chunk ${i + 1}/${chunks.length} — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB`);
               const before = await om.getRecord(threadId);
               const tokensBefore = before?.observationTokenCount ?? 0;
+              const msgIds = chunks[i].map((m) => m.id).filter(Boolean);
+              omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens, firstMsgId=${msgIds[0] ?? "none"}`);
+              const t0 = Date.now();
               await runObserve(threadId, chunks[i]);
+              const elapsed = Date.now() - t0;
               const after = await om.getRecord(threadId);
               const tokensAfter = after?.observationTokenCount ?? 0;
-              omLog(`[observe] chunk ${i + 1} complete — observations: ${tokensBefore} → ${tokensAfter} tokens`);
+              const delta = tokensAfter - tokensBefore;
+              omLog(`[observe] chunk ${i + 1}/${chunks.length} END — ${elapsed}ms elapsed, obs: ${tokensBefore} → ${tokensAfter} (${delta >= 0 ? "+" : ""}${delta})`);
               if (i < chunks.length - 1) {
                 if (tokensAfter >= reflectAt) {
-                  omLog(`[observe] observations at ${tokensAfter} tokens (>= ${reflectAt}), reflecting before next chunk`);
+                  omLog(`[observe] obs at ${tokensAfter} >= reflectAt ${reflectAt}, reflecting before next chunk`);
                   await om.reflect(threadId);
                 }
-                omLog(`[observe] waiting ${chunkDelay}ms before next chunk`);
+                omLog(`[observe] waiting ${chunkDelay}ms`);
                 await new Promise((resolve7) => setTimeout(resolve7, chunkDelay));
               }
             }
@@ -178470,6 +178473,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
         args: {},
         async execute(_args, context2) {
           const threadId = context2.sessionID;
+          const lookupKey = `thread:${threadId}`;
           try {
             const db = store.client;
             if (!db)
@@ -178491,10 +178495,10 @@ ${OBSERVATION_CONTINUATION_HINT}`);
                       bufferedReflectionTokens = 0,
                       bufferedReflectionInputTokens = 0,
                       reflectedObservationLineCount = 0
-                    WHERE lookupKey = ?`,
-              args: [threadId]
+                     WHERE lookupKey = ?`,
+              args: [lookupKey]
             });
-            omLog(`[reset] observations cleared for ${threadId}`);
+            omLog(`[reset] observations cleared for ${lookupKey}`);
             return "✅ Observational memory reset. Previous state saved to backup slot 1 — use om_restore to recover if needed.";
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -178507,6 +178511,7 @@ ${OBSERVATION_CONTINUATION_HINT}`);
         args: { slot: tool5.schema.number().describe("1 = most recent backup, 2 = one generation older") },
         async execute(args, context2) {
           const threadId = context2.sessionID;
+          const lookupKey = `thread:${threadId}`;
           const slot = args.slot === 2 ? 2 : 1;
           try {
             const db = store.client;
@@ -178514,14 +178519,14 @@ ${OBSERVATION_CONTINUATION_HINT}`);
               return "Raw DB access unavailable.";
             const result = await db.execute({
               sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
-              args: [threadId, slot]
+              args: [lookupKey, slot]
             });
             const row = result.rows?.[0];
             if (!row)
               return `No backup found in slot ${slot}.`;
             await db.execute({
               sql: `UPDATE mastra_observational_memory SET activeObservations = ?, generationCount = ? WHERE lookupKey = ?`,
-              args: [row.observations, row.generationCount, threadId]
+              args: [row.observations, row.generationCount, lookupKey]
             });
             omLog(`[restore] restored slot ${slot} — gen ${row.generationCount}, saved at ${row.savedAt}`);
             return [`✅ Restored from slot ${slot}`, `  Generation: ${row.generationCount}`, `  Saved at: ${row.savedAt}`].join(`
