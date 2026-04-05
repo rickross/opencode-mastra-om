@@ -286,6 +286,28 @@ export const MastraPlugin: Plugin = async ctx => {
 
   omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
 
+  // Ensure backup table exists
+  try {
+    const db = (store as any).turso;
+    if (db) {
+      await db.execute({
+        sql: `CREATE TABLE IF NOT EXISTS mastra_om_backups (
+          id TEXT PRIMARY KEY,
+          lookupKey TEXT NOT NULL,
+          slot INTEGER NOT NULL,
+          generationCount INTEGER NOT NULL DEFAULT 0,
+          observations TEXT NOT NULL DEFAULT '',
+          savedAt TEXT NOT NULL,
+          UNIQUE(lookupKey, slot)
+        )`,
+        args: [],
+      });
+      omLog('[init] mastra_om_backups table ready');
+    }
+  } catch (err) {
+    omLog(`[init] backup table setup failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // Helper: backup current observations before observe/reflect
   const backupObservations = async (threadId: string, label: string) => {
     try {
@@ -622,9 +644,28 @@ export const MastraPlugin: Plugin = async ctx => {
       om_restore: tool({
         description: 'Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).',
         args: { slot: tool.schema.number().describe('1 = most recent backup, 2 = one generation older') },
-        async execute(_args, _context) {
-          omLog('[restore] stubbed execute called');
-          return 'stubbed';
+        async execute(args, context) {
+          const threadId = context.sessionID;
+          const slot = args.slot === 2 ? 2 : 1;
+          try {
+            const db = (store as any).turso;
+            if (!db) return 'Raw DB access unavailable.';
+            const result = await db.execute({
+              sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
+              args: [threadId, slot],
+            });
+            const row = result.rows?.[0];
+            if (!row) return `No backup found in slot ${slot}.`;
+            await db.execute({
+              sql: `UPDATE mastra_observational_memory SET activeObservations = ?, generationCount = ? WHERE lookupKey = ?`,
+              args: [row.observations, row.generationCount, threadId],
+            });
+            omLog(`[restore] restored slot ${slot} — gen ${row.generationCount}, saved at ${row.savedAt}`);
+            return [`✅ Restored from slot ${slot}`, `  Generation: ${row.generationCount}`, `  Saved at: ${row.savedAt}`].join('\n');
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `Restore failed: ${msg}`;
+          }
         },
       }),
 
