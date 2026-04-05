@@ -179948,7 +179948,6 @@ var MastraPlugin = async (ctx) => {
       try {
         const mastraMessages = convertMessages2(output.messages, sessionId);
         if (mastraMessages.length > 0) {
-          await backupObservations(sessionId, "pre-auto-observe");
           await runObserve(sessionId, mastraMessages);
         }
         const record3 = await om.getRecord(sessionId);

@@ -411,7 +411,6 @@ export const MastraPlugin: Plugin = async ctx => {
       try {
         const mastraMessages = convertMessages(output.messages, sessionId);
         if (mastraMessages.length > 0) {
-          await backupObservations(sessionId, 'pre-auto-observe');
           await runObserve(sessionId, mastraMessages);
         }
 
