@@ -96,6 +96,11 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    * If not set, no chunking is applied (default behavior).
    */
   chunkBytes?: number;
+  /**
+   * Delay in milliseconds between chunks when chunked observation is active.
+   * Helps avoid rate limits. Default: 200ms.
+   */
+  chunkDelay?: number;
 }
 
 const CONFIG_FILE = '.opencode/mastra.json';
@@ -547,16 +552,24 @@ export const MastraPlugin: Plugin = async ctx => {
 
             const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
             const reflectAt = Math.floor(refThreshold * 0.8);
+            const chunkDelay = config.chunkDelay ?? 200;
 
             for (let i = 0; i < chunks.length; i++) {
-              omLog(`[observe] processing chunk ${i + 1}/${chunks.length} (${chunks[i]!.length} messages)`);
+              const chunkBytes2 = chunks[i]!.reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), 'utf8'), 0);
+              omLog(`[observe] chunk ${i + 1}/${chunks.length} — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB`);
+              const before = await om.getRecord(threadId);
+              const tokensBefore = before?.observationTokenCount ?? 0;
               await runObserve(threadId, chunks[i]!);
+              const after = await om.getRecord(threadId);
+              const tokensAfter = after?.observationTokenCount ?? 0;
+              omLog(`[observe] chunk ${i + 1} complete — observations: ${tokensBefore} → ${tokensAfter} tokens`);
               if (i < chunks.length - 1) {
-                const record = await om.getRecord(threadId);
-                if (record && (record.observationTokenCount ?? 0) >= reflectAt) {
-                  omLog(`[observe] observations at ${record.observationTokenCount} tokens, reflecting before next chunk`);
+                if (tokensAfter >= reflectAt) {
+                  omLog(`[observe] observations at ${tokensAfter} tokens (>= ${reflectAt}), reflecting before next chunk`);
                   await om.reflect(threadId);
                 }
+                omLog(`[observe] waiting ${chunkDelay}ms before next chunk`);
+                await new Promise(resolve => setTimeout(resolve, chunkDelay));
               }
             }
             return `Observation complete — processed ${chunks.length} chunks. Check om_status for results.`;
