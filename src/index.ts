@@ -103,6 +103,8 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
   chunkDelay?: number;
 }
 
+import PKG from '../package.json' with { type: 'json' };
+const PKG_VERSION = PKG.version;
 const CONFIG_FILE = '.opencode/mastra.json';
 const DEFAULT_STORAGE_PATH = '.opencode/memory/observations.db';
 
@@ -193,7 +195,7 @@ export const MastraPlugin: Plugin = async ctx => {
     if (logFile) { try { appendFileSync(logFile, line); } catch {} }
   };
 
-  omLog(`[init] mastra-om plugin starting, pid=${process.pid}`);
+  omLog(`[init] mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
 
   // Track last error for memory_status
   let lastError: string | null = null;

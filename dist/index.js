@@ -177998,6 +177998,67 @@ ${grouped}` : grouped;
 var OM_REPRO_CAPTURE_DIR = process.env.OM_REPRO_CAPTURE_DIR ?? ".mastra-om-repro";
 // src/index.ts
 import { tool as tool5 } from "@opencode-ai/plugin";
+// package.json
+var package_default = {
+  $schema: "https://json.schemastore.org/package.json",
+  name: "opencode-mastra-om",
+  version: "0.1.37",
+  type: "module",
+  license: "MIT",
+  description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
+  keywords: [
+    "opencode",
+    "plugin",
+    "memory",
+    "mastra",
+    "observational-memory"
+  ],
+  author: "Rick Ross",
+  repository: {
+    type: "git",
+    url: "https://github.com/rickross/opencode-mastra-om"
+  },
+  main: "dist/index.js",
+  exports: {
+    ".": "./dist/index.js",
+    "./server": "./dist/index.js"
+  },
+  files: [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  opencode: {
+    type: "plugin",
+    hooks: [
+      "tool",
+      "experimental.chat.messages.transform",
+      "experimental.chat.system.transform",
+      "event"
+    ]
+  },
+  dependencies: {
+    "@mastra/core": "1.21.0",
+    "@mastra/libsql": "1.7.3",
+    "@mastra/memory": "1.13.0",
+    "@opencode-ai/plugin": "^1.3.11",
+    "@opencode-ai/sdk": "^1.3.11"
+  },
+  devDependencies: {
+    "@tsconfig/node22": "^22.0.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    typescript: "^5.0.0"
+  },
+  scripts: {
+    build: `bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && node -e "const v=require('./package.json').version; const fs=require('fs'); fs.mkdirSync('versions/v'+v,{recursive:true}); fs.copyFileSync('dist/index.js','versions/v'+v+'/index.js'); console.log('saved versions/v'+v+'/index.js')"`,
+    typecheck: "tsc --noEmit",
+    prepublishOnly: "bun run build"
+  }
+};
+
+// src/index.ts
+var PKG_VERSION = package_default.version;
 var CONFIG_FILE = ".opencode/mastra.json";
 var DEFAULT_STORAGE_PATH = ".opencode/memory/observations.db";
 var PROVIDER_ENV_VARS = {
@@ -178083,7 +178144,7 @@ var MastraPlugin = async (ctx) => {
       } catch {}
     }
   };
-  omLog(`[init] mastra-om plugin starting, pid=${process.pid}`);
+  omLog(`[init] mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
   let lastError = null;
   let credentialsReady = false;
   const resolveCredentials = async () => {
