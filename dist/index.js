@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.41",
+  version: "0.1.42",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178378,16 +178378,10 @@ var MastraPlugin = async (ctx) => {
         return;
       await resolveCredentials();
       try {
-        const mastraMessages = convertMessages2(output.messages, sessionId);
-        if (mastraMessages.length > 0) {
-          await runObserveChunked(sessionId, mastraMessages);
-        }
-        const record3 = await om.getRecord(sessionId);
-        if (record3?.lastObservedAt) {
-          const lastObservedAt = new Date(record3.lastObservedAt);
-          output.messages = output.messages.filter(({ info }) => {
-            return new Date(info.time.created) > lastObservedAt;
-          });
+        const resp = await ctx.client.session.messages({ path: { id: sessionId } });
+        if (resp.data && resp.data.length > 0) {
+          const allMessages = convertMessages2(resp.data, sessionId);
+          await runObserveChunked(sessionId, allMessages);
         }
         lastError = null;
       } catch (err) {
@@ -178479,18 +178473,30 @@ ${OBSERVATION_CONTINUATION_HINT}`);
         }
       }),
       om_observe: tool5({
-        description: "Manually trigger an observation cycle right now, without waiting for the token threshold.",
-        args: {},
-        async execute(_args, context2) {
+        description: "Manually trigger an observation cycle right now, without waiting for the token threshold. Optionally pass a `since` ISO date string to observe only messages from that point forward. Omit `since` to observe the full history from the beginning.",
+        args: {
+          since: tool5.schema.string().optional().describe('ISO date string (e.g. "2026-04-05T12:00:00Z") — only observe messages after this time. Omit to observe full history.')
+        },
+        async execute(args, context2) {
           const threadId = context2.sessionID;
           await resolveCredentials();
           try {
             const resp = await ctx.client.session.messages({ path: { id: threadId } });
             if (!resp.data || resp.data.length === 0)
               return "No messages to observe.";
-            const mastraMessages = convertMessages2(resp.data, threadId);
+            let allMessages = convertMessages2(resp.data, threadId);
+            if (args.since) {
+              const sinceDate = new Date(args.since);
+              const before = allMessages.length;
+              allMessages = allMessages.filter((m) => m.createdAt >= sinceDate);
+              omLog(`[observe] since=${args.since} filtered ${before} → ${allMessages.length} messages`);
+            } else {
+              omLog(`[observe] observing full history: ${allMessages.length} messages`);
+            }
+            if (allMessages.length === 0)
+              return "No messages in the specified time range.";
             await backupObservations(threadId, "pre-observe");
-            await runObserveChunked(threadId, mastraMessages);
+            await runObserveChunked(threadId, allMessages);
             return "Observation complete. Check om_status for results.";
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
