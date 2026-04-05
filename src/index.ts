@@ -279,6 +279,44 @@ export const MastraPlugin: Plugin = async ctx => {
 
   omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
 
+  // Helper: backup current observations before observe/reflect
+  const backupObservations = async (threadId: string, label: string) => {
+    try {
+      const record = await om.getRecord(threadId);
+      const observations = record?.activeObservations;
+      if (!observations) return;
+      const generationCount = record?.generationCount ?? 0;
+      const lookupKey = threadId;
+      const savedAt = new Date().toISOString();
+      const db = (store as any).turso;
+      if (!db) return;
+
+      // Rotate: slot 1 → slot 2, then write current → slot 1
+      await db.execute({
+        sql: `INSERT INTO mastra_om_backups (id, lookupKey, slot, generationCount, observations, savedAt)
+              SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, savedAt
+              FROM mastra_om_backups WHERE lookupKey = ? AND slot = 1
+              ON CONFLICT(lookupKey, slot) DO UPDATE SET
+                generationCount = excluded.generationCount,
+                observations = excluded.observations,
+                savedAt = excluded.savedAt`,
+        args: [lookupKey],
+      });
+      await db.execute({
+        sql: `INSERT INTO mastra_om_backups (id, lookupKey, slot, generationCount, observations, savedAt)
+              VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?)
+              ON CONFLICT(lookupKey, slot) DO UPDATE SET
+                generationCount = excluded.generationCount,
+                observations = excluded.observations,
+                savedAt = excluded.savedAt`,
+        args: [lookupKey, generationCount, observations, savedAt],
+      });
+      omLog(`[backup] ${label} — saved gen ${generationCount} to slot 1, rotated old slot 1 → slot 2`);
+    } catch (err) {
+      omLog(`[backup] failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   setTimeout(() => {
     void ctx.client.tui.showToast({
       body: { title: 'Mastra OM', message: 'Observational Memory active', variant: 'success', duration: 3000 },
@@ -334,6 +372,7 @@ export const MastraPlugin: Plugin = async ctx => {
       try {
         const mastraMessages = convertMessages(output.messages, sessionId);
         if (mastraMessages.length > 0) {
+          await backupObservations(sessionId, 'pre-auto-observe');
           await runObserve(sessionId, mastraMessages);
         }
 
@@ -443,6 +482,7 @@ export const MastraPlugin: Plugin = async ctx => {
             const resp = await ctx.client.session.messages({ path: { id: threadId } });
             if (!resp.data || resp.data.length === 0) return 'No messages to observe.';
             const mastraMessages = convertMessages(resp.data, threadId);
+            await backupObservations(threadId, 'pre-observe');
             await runObserve(threadId, mastraMessages);
             return 'Observation cycle triggered. Check memory_status for results.';
           } catch (err) {
@@ -460,6 +500,7 @@ export const MastraPlugin: Plugin = async ctx => {
           const threadId = context.sessionID;
           await resolveCredentials();
           try {
+            await backupObservations(threadId, 'pre-reflect');
             await om.reflect(threadId);
             return 'Reflection cycle triggered. Check memory_observations for results.';
           } catch (err) {
