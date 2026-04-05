@@ -178396,6 +178396,36 @@ ${OBSERVATION_CONTINUATION_HINT}`);
           }
         }
       }),
+      om_restore: tool5({
+        description: "Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).",
+        args: { slot: { type: "number", description: "1 = most recent backup, 2 = one generation older" } },
+        async execute(args, context2) {
+          const threadId = context2.sessionID;
+          const slot = args.slot === 2 ? 2 : 1;
+          try {
+            const db = store.turso;
+            if (!db)
+              return "Raw DB access unavailable.";
+            const result = await db.execute({
+              sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
+              args: [threadId, slot]
+            });
+            const row = result.rows?.[0];
+            if (!row)
+              return `No backup found in slot ${slot}.`;
+            await db.execute({
+              sql: `UPDATE mastra_observational_memory SET activeObservations = ?, generationCount = ? WHERE lookupKey = ?`,
+              args: [row.observations, row.generationCount, threadId]
+            });
+            omLog(`[restore] restored slot ${slot} — gen ${row.generationCount}, saved at ${row.savedAt}`);
+            return [`✅ Restored from slot ${slot}`, `  Generation: ${row.generationCount}`, `  Saved at: ${row.savedAt}`].join(`
+`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `Restore failed: ${msg}`;
+          }
+        }
+      }),
       om_config: tool5({
         description: "Show the current Mastra Observational Memory configuration.",
         args: {},
