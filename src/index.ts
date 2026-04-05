@@ -193,6 +193,7 @@ export const MastraPlugin: Plugin = async ctx => {
   let credentialsReady = false;
   const resolveCredentials = async () => {
     if (credentialsReady) return;
+    omLog(`[credentials] config.apiKey=${config.apiKey ? 'SET' : 'UNSET'}, model=${config.model}`);
 
     // If apiKey is hardcoded in config, apply to model's provider env vars
     if (config.apiKey) {

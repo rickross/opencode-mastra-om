@@ -178089,6 +178089,7 @@ var MastraPlugin = async (ctx) => {
   const resolveCredentials = async () => {
     if (credentialsReady)
       return;
+    omLog(`[credentials] config.apiKey=${config2.apiKey ? "SET" : "UNSET"}, model=${config2.model}`);
     if (config2.apiKey) {
       const modelProvider = config2.model?.split("/")[0];
       if (modelProvider) {
