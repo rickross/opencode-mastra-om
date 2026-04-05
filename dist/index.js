@@ -178397,10 +178397,9 @@ ${OBSERVATION_CONTINUATION_HINT}`);
         }
       }),
       om_restore: tool5({
-        description: "Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).",
-        args: { slot: { type: "number", description: "1 = most recent backup, 2 = one generation older" } },
-        async execute(_args, _context) {
-          omLog("[restore] stubbed execute called");
+        description: "Restore observational memory from backup.",
+        args: {},
+        async execute() {
           return "stubbed";
         }
       }),
