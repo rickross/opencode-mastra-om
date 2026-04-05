@@ -164,12 +164,7 @@ function resolveThreshold(t: number | { min: number; max: number }): number {
 }
 
 export const MastraPlugin: Plugin = async ctx => {
-  // Hardcoded emergency log — always write regardless of config
-  const emergencyLog = '/tmp/om-emergency.log';
-  try { appendFileSync(emergencyLog, `[${new Date().toISOString()}] plugin entry, pid=${process.pid}, dir=${ctx.directory}\n`); } catch {}
-
   const config = await loadConfig(ctx.directory);
-  try { appendFileSync(emergencyLog, `[${new Date().toISOString()}] loadConfig done, logPath=${config.logPath}, model=${config.model}\n`); } catch {}
 
   // Debug logger
   let logFile: string | null = null;
@@ -180,11 +175,10 @@ export const MastraPlugin: Plugin = async ctx => {
     logFile = join(ctx.directory, '.opencode/memory/om.log');
     mkdirSync(dirname(logFile), { recursive: true });
   }
-  // Also always log to emergency file
+
   const omLog = (msg: string) => {
     const line = `[${new Date().toISOString()}] ${msg}\n`;
     if (logFile) { try { appendFileSync(logFile, line); } catch {} }
-    try { appendFileSync(emergencyLog, line); } catch {}
   };
 
   omLog(`[init] mastra-om plugin starting, pid=${process.pid}`);
@@ -199,7 +193,6 @@ export const MastraPlugin: Plugin = async ctx => {
   let credentialsReady = false;
   const resolveCredentials = async () => {
     if (credentialsReady) return;
-    omLog(`[credentials] config.apiKey=${config.apiKey ? 'SET' : 'UNSET'}, model=${config.model}`);
 
     // If apiKey is hardcoded in config, apply to model's provider env vars
     if (config.apiKey) {
@@ -285,70 +278,40 @@ export const MastraPlugin: Plugin = async ctx => {
   const om = new ObservationalMemory(omOptions);
 
   omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
-  omLog(`[init] init complete, registering hooks and tools`);
 
   // Helper: backup current observations before observe/reflect
-  const backupObservations = async (threadId: string, trigger: string) => {
+  const backupObservations = async (threadId: string, label: string) => {
     try {
       const record = await om.getRecord(threadId);
       const observations = record?.activeObservations;
       if (!observations) return;
+      const generationCount = record?.generationCount ?? 0;
+      const lookupKey = threadId;
+      const savedAt = new Date().toISOString();
       const db = (store as any).turso;
       if (!db) return;
 
-      const snap = {
-        lookupKey: threadId,
-        generationCount: record.generationCount ?? 0,
-        observations,
-        observationTokenCount: record.observationTokenCount ?? 0,
-        lastObservedAt: record.lastObservedAt ?? null,
-        lastReflectionAt: record.lastReflectionAt ?? null,
-        pendingMessageTokens: record.pendingMessageTokens ?? 0,
-        observedMessageIds: record.observedMessageIds ?? '[]',
-        trigger,
-        savedAt: new Date().toISOString(),
-      };
-
       // Rotate: slot 1 → slot 2, then write current → slot 1
       await db.execute({
-        sql: `INSERT INTO mastra_om_backups
-                (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
-              SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, observationTokenCount,
-                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt
+        sql: `INSERT INTO mastra_om_backups (id, lookupKey, slot, generationCount, observations, savedAt)
+              SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, savedAt
               FROM mastra_om_backups WHERE lookupKey = ? AND slot = 1
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
                 observations = excluded.observations,
-                observationTokenCount = excluded.observationTokenCount,
-                lastObservedAt = excluded.lastObservedAt,
-                lastReflectionAt = excluded.lastReflectionAt,
-                pendingMessageTokens = excluded.pendingMessageTokens,
-                observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
                 savedAt = excluded.savedAt`,
-        args: [threadId],
+        args: [lookupKey],
       });
       await db.execute({
-        sql: `INSERT INTO mastra_om_backups
-                (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
-              VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sql: `INSERT INTO mastra_om_backups (id, lookupKey, slot, generationCount, observations, savedAt)
+              VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?)
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
                 observations = excluded.observations,
-                observationTokenCount = excluded.observationTokenCount,
-                lastObservedAt = excluded.lastObservedAt,
-                lastReflectionAt = excluded.lastReflectionAt,
-                pendingMessageTokens = excluded.pendingMessageTokens,
-                observedMessageIds = excluded.observedMessageIds,
-                trigger = excluded.trigger,
                 savedAt = excluded.savedAt`,
-        args: [threadId, snap.generationCount, snap.observations, snap.observationTokenCount,
-               snap.lastObservedAt, snap.lastReflectionAt, snap.pendingMessageTokens,
-               snap.observedMessageIds, snap.trigger, snap.savedAt],
+        args: [lookupKey, generationCount, observations, savedAt],
       });
-      omLog(`[backup] ${trigger} — saved gen ${snap.generationCount} to slot 1, rotated old slot 1 → slot 2`);
+      omLog(`[backup] ${label} — saved gen ${generationCount} to slot 1, rotated old slot 1 → slot 2`);
     } catch (err) {
       omLog(`[backup] failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -388,10 +351,8 @@ export const MastraPlugin: Plugin = async ctx => {
 
   return {
     event: async ({ event }) => {
-      omLog(`[event] received event type=${event.type}`);
       if (event.type === 'session.created') {
         const sessionId = event.properties.info.id;
-        omLog(`[event] session.created, calling om.getOrCreateRecord for ${sessionId}`);
         try {
           await om.getOrCreateRecord(sessionId);
           omLog(`[session] initialized record for ${sessionId}`);
@@ -406,24 +367,16 @@ export const MastraPlugin: Plugin = async ctx => {
       const sessionId = output.messages[0]?.info.sessionID;
       if (!sessionId) return;
 
-      omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
-      omLog(`[transform] calling resolveCredentials`);
       await resolveCredentials();
-      omLog(`[transform] resolveCredentials done`);
 
       try {
-        omLog(`[transform] calling convertMessages`);
         const mastraMessages = convertMessages(output.messages, sessionId);
-        omLog(`[transform] convertMessages done, count=${mastraMessages.length}`);
         if (mastraMessages.length > 0) {
-          omLog(`[transform] calling runObserve`);
+          await backupObservations(sessionId, 'pre-auto-observe');
           await runObserve(sessionId, mastraMessages);
-          omLog(`[transform] runObserve done`);
         }
 
-        omLog(`[transform] calling om.getRecord`);
         const record = await om.getRecord(sessionId);
-        omLog(`[transform] om.getRecord done`);
         if (record?.lastObservedAt) {
           const lastObservedAt = new Date(record.lastObservedAt);
           output.messages = output.messages.filter(({ info }) => {
@@ -431,7 +384,6 @@ export const MastraPlugin: Plugin = async ctx => {
           });
         }
         lastError = null;
-        omLog(`[transform] messages.transform complete`);
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         omLog(`[error] transform failed: ${lastError}`);
@@ -573,64 +525,6 @@ export const MastraPlugin: Plugin = async ctx => {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `Prune failed: ${msg}`;
-          }
-        },
-      }),
-
-      om_restore: tool({
-        description: 'Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).',
-        args: { slot: { type: 'number', description: '1 = most recent backup, 2 = one generation older' } },
-        async execute(args, context) {
-          const threadId = context.sessionID;
-          const slot = args.slot === 2 ? 2 : 1;
-          try {
-            const db = (store as any).turso;
-            if (!db) return 'Raw DB access unavailable.';
-
-            const result = await db.execute({
-              sql: `SELECT * FROM mastra_om_backups WHERE lookupKey = ? AND slot = ?`,
-              args: [threadId, slot],
-            });
-
-            const row = result.rows?.[0];
-            if (!row) return `No backup found in slot ${slot}.`;
-
-            // Restore full state back to mastra_observational_memory
-            await db.execute({
-              sql: `UPDATE mastra_observational_memory SET
-                      activeObservations = ?,
-                      generationCount = ?,
-                      observationTokenCount = ?,
-                      lastObservedAt = ?,
-                      lastReflectionAt = ?,
-                      pendingMessageTokens = ?,
-                      observedMessageIds = ?
-                    WHERE lookupKey = ?`,
-              args: [
-                row.observations,
-                row.generationCount,
-                row.observationTokenCount,
-                row.lastObservedAt,
-                row.lastReflectionAt,
-                row.pendingMessageTokens,
-                row.observedMessageIds,
-                threadId,
-              ],
-            });
-
-            omLog(`[restore] restored slot ${slot} — gen ${row.generationCount}, saved at ${row.savedAt}, trigger=${row.trigger}`);
-            return [
-              `✅ Restored from slot ${slot}`,
-              `  Generation: ${row.generationCount}`,
-              `  Saved at: ${row.savedAt}`,
-              `  Trigger: ${row.trigger}`,
-              `  Observation tokens: ${row.observationTokenCount}`,
-              `  Last observed: ${row.lastObservedAt ?? 'never'}`,
-              `  Last reflection: ${row.lastReflectionAt ?? 'never'}`,
-            ].join('\n');
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return `Restore failed: ${msg}`;
           }
         },
       }),
