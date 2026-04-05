@@ -89,16 +89,6 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    * Alternative to OM_DEBUG env var. If set, logs are always written here.
    */
   logPath?: string;
-
-  /**
-   * Maximum bytes per observation chunk. When set, om_observe splits unobserved
-   * messages into chunks of this size and processes them sequentially.
-   * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
-   * Conservative values produce better quality observations than pushing model limits:
-   * E.g., 500000 (500KB) for Gemini 2.5 Flash, 200000 (200KB) for Claude, 100000 (100KB) for smaller models.
-   * If not set, no chunking is applied (default behavior).
-   */
-  chunkBytes?: number;
 }
 
 const CONFIG_FILE = '.opencode/mastra.json';
@@ -216,30 +206,26 @@ export const MastraPlugin: Plugin = async ctx => {
       }
     }
 
-    // Pull from OpenCode's provider store only if no apiKey is hardcoded
-    // Skip entirely when config.apiKey is set — avoids potential hang on provider API call
-    if (!config.apiKey) {
-      try {
-        const providersResponse = await Promise.race([
-          ctx.client.config.providers(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-        ]);
-        if (providersResponse.data) {
-          for (const provider of providersResponse.data.providers) {
-            const key = provider.key ?? (provider as any).apiKey ?? (provider as any).token;
-            if (key && provider.env) {
-              for (const envVar of provider.env) {
-                if (!process.env[envVar]) {
-                  process.env[envVar] = key;
-                  omLog(`[credentials] set ${envVar} from provider store`);
-                }
+    // Also pull from OpenCode's provider store — fills in any remaining gaps
+    try {
+      const providersResponse = await ctx.client.config.providers();
+      if (providersResponse.data) {
+        for (const provider of providersResponse.data.providers) {
+          // Fix upstream bug: provider.key may be undefined when env.length > 1
+          // Use any available key from the provider
+          const key = provider.key ?? (provider as any).apiKey ?? (provider as any).token;
+          if (key && provider.env) {
+            for (const envVar of provider.env) {
+              if (!process.env[envVar]) {
+                process.env[envVar] = key;
+                omLog(`[credentials] set ${envVar} from provider store`);
               }
             }
           }
         }
-      } catch (e) {
-        omLog(`[credentials] provider store unavailable: ${e}`);
       }
+    } catch (e) {
+      omLog(`[credentials] provider store unavailable: ${e}`);
     }
 
     credentialsReady = true;
@@ -248,84 +234,50 @@ export const MastraPlugin: Plugin = async ctx => {
 
   // Storage — supports PostgreSQL or SQLite
   let store: any;
-  let om: any;
-  let initFailed = false;
-
-  try {
-    if (config.storageUrl && (config.storageUrl.startsWith('postgresql://') || config.storageUrl.startsWith('postgres://'))) {
-      omLog(`[init] using PostgreSQL storage: ${config.storageUrl.replace(/:\/\/[^@]+@/, '://<redacted>@')}`);
-      const pgMod: any = await new Function('return import("@mastra/pg")')();
-      const PostgresStore = pgMod.PostgresStore;
-      store = new PostgresStore({ connectionString: config.storageUrl });
-      await store.init();
-    } else {
-      const url = config.storageUrl ?? `file:${join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH)}`;
-      if (!config.storageUrl) {
-        const dbAbsolutePath = join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH);
-        await mkdir(dirname(dbAbsolutePath), { recursive: true });
-      }
-      omLog(`[init] using SQLite/LibSQL storage: ${url}`);
-      store = new LibSQLStore({ id: 'mastra-om', url });
-      await store.init();
+  if (config.storageUrl && (config.storageUrl.startsWith('postgresql://') || config.storageUrl.startsWith('postgres://'))) {
+    omLog(`[init] using PostgreSQL storage: ${config.storageUrl.replace(/:\/\/[^@]+@/, '://<redacted>@')}`);
+    // Dynamically import @mastra/pg — not available until installed
+    // Using Function constructor to bypass TypeScript static analysis
+    const pgMod: any = await new Function('return import("@mastra/pg")')();
+    const PostgresStore = pgMod.PostgresStore;
+    store = new PostgresStore({ connectionString: config.storageUrl });
+    await store.init();
+  } else {
+    const url = config.storageUrl ?? `file:${join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH)}`;
+    if (!config.storageUrl) {
+      const dbAbsolutePath = join(ctx.directory, config.storagePath ?? DEFAULT_STORAGE_PATH);
+      await mkdir(dirname(dbAbsolutePath), { recursive: true });
     }
-
-    const storage = await store.getStore('memory');
-    if (!storage) {
-      omLog(`[init] ERROR: failed to get storage — OM disabled`);
-      initFailed = true;
-    } else {
-      // Build OM config — support separate observation/reflection models
-      const omOptions: ObservationalMemoryOptions = {
-        storage,
-        scope: config.scope,
-        shareTokenBudget: config.shareTokenBudget,
-        observation: {
-          ...config.observation,
-          ...(config.observationModel ? { model: config.observationModel } : {}),
-        },
-        reflection: {
-          ...config.reflection,
-          ...(config.reflectionModel ? { model: config.reflectionModel } : {}),
-        },
-      };
-
-      if (config.model && !config.observationModel && !config.reflectionModel) {
-        omOptions.model = config.model;
-      }
-
-      om = new ObservationalMemory(omOptions);
-      omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
-
-      // Ensure backup table exists — idempotent, safe to run on every init
-      try {
-        const db = (store as any).turso;
-        if (db) {
-          await db.execute(`CREATE TABLE IF NOT EXISTS mastra_om_backups (
-            id TEXT PRIMARY KEY,
-            lookupKey TEXT NOT NULL,
-            slot INTEGER NOT NULL,
-            generationCount INTEGER NOT NULL DEFAULT 0,
-            observations TEXT,
-            observationTokenCount INTEGER NOT NULL DEFAULT 0,
-            lastObservedAt TEXT,
-            lastReflectionAt TEXT,
-            pendingMessageTokens INTEGER NOT NULL DEFAULT 0,
-            observedMessageIds TEXT NOT NULL DEFAULT '[]',
-            triggerEvent TEXT,
-            savedAt TEXT NOT NULL,
-            UNIQUE(lookupKey, slot)
-          )`);
-          omLog(`[init] mastra_om_backups table ready`);
-        }
-      } catch (tableErr) {
-        omLog(`[init] WARNING: could not create mastra_om_backups: ${tableErr instanceof Error ? tableErr.message : String(tableErr)}`);
-      }
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    omLog(`[init] ERROR during storage init: ${msg} — OM disabled`);
-    initFailed = true;
+    omLog(`[init] using SQLite/LibSQL storage: ${url}`);
+    store = new LibSQLStore({ id: 'mastra-om', url });
+    await store.init();
   }
+  const storage = await store.getStore('memory');
+  if (!storage) throw new Error(`mastra-om: failed to initialize storage`);
+
+  // Build OM config — support separate observation/reflection models
+  const omOptions: ObservationalMemoryOptions = {
+    storage,
+    scope: config.scope,
+    shareTokenBudget: config.shareTokenBudget,
+    observation: {
+      ...config.observation,
+      ...(config.observationModel ? { model: config.observationModel } : {}),
+    },
+    reflection: {
+      ...config.reflection,
+      ...(config.reflectionModel ? { model: config.reflectionModel } : {}),
+    },
+  };
+
+  // Set top-level model only if not overriding both separately
+  if (config.model && !config.observationModel && !config.reflectionModel) {
+    omOptions.model = config.model;
+  }
+
+  const om = new ObservationalMemory(omOptions);
+
+  omLog(`[init] ObservationalMemory created, model=${config.model ?? 'default'}`);
 
   // Helper: backup current observations before observe/reflect
   const backupObservations = async (threadId: string, trigger: string) => {
@@ -345,7 +297,7 @@ export const MastraPlugin: Plugin = async ctx => {
         lastReflectionAt: record.lastReflectionAt ?? null,
         pendingMessageTokens: record.pendingMessageTokens ?? 0,
         observedMessageIds: record.observedMessageIds ?? '[]',
-        triggerEvent: trigger,
+        trigger,
         savedAt: new Date().toISOString(),
       };
 
@@ -353,9 +305,9 @@ export const MastraPlugin: Plugin = async ctx => {
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
               SELECT hex(randomblob(16)), lookupKey, 2, generationCount, observations, observationTokenCount,
-                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt
+                     lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt
               FROM mastra_om_backups WHERE lookupKey = ? AND slot = 1
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -365,14 +317,14 @@ export const MastraPlugin: Plugin = async ctx => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                triggerEvent = excluded.triggerEvent,
+                trigger = excluded.trigger,
                 savedAt = excluded.savedAt`,
         args: [threadId],
       });
       await db.execute({
         sql: `INSERT INTO mastra_om_backups
                 (id, lookupKey, slot, generationCount, observations, observationTokenCount,
-                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, triggerEvent, savedAt)
+                 lastObservedAt, lastReflectionAt, pendingMessageTokens, observedMessageIds, trigger, savedAt)
               VALUES (hex(randomblob(16)), ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(lookupKey, slot) DO UPDATE SET
                 generationCount = excluded.generationCount,
@@ -382,7 +334,7 @@ export const MastraPlugin: Plugin = async ctx => {
                 lastReflectionAt = excluded.lastReflectionAt,
                 pendingMessageTokens = excluded.pendingMessageTokens,
                 observedMessageIds = excluded.observedMessageIds,
-                triggerEvent = excluded.triggerEvent,
+                trigger = excluded.trigger,
                 savedAt = excluded.savedAt`,
         args: [threadId, snap.generationCount, snap.observations, snap.observationTokenCount,
                snap.lastObservedAt, snap.lastReflectionAt, snap.pendingMessageTokens,
@@ -428,11 +380,8 @@ export const MastraPlugin: Plugin = async ctx => {
 
   return {
     event: async ({ event }) => {
-      omLog(`[event] received event type=${event.type}`);
-      if (initFailed || !om) return;
       if (event.type === 'session.created') {
         const sessionId = event.properties.info.id;
-        omLog(`[session] creating record for ${sessionId}`);
         try {
           await om.getOrCreateRecord(sessionId);
           omLog(`[session] initialized record for ${sessionId}`);
@@ -444,29 +393,18 @@ export const MastraPlugin: Plugin = async ctx => {
     },
 
     'experimental.chat.messages.transform': async (_input, output) => {
-      omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
-      if (initFailed || !om) { omLog(`[transform] OM not initialized, skipping`); return; }
       const sessionId = output.messages[0]?.info.sessionID;
-      if (!sessionId) { omLog(`[transform] no sessionId, skipping`); return; }
-      omLog(`[transform] sessionId=${sessionId}`);
+      if (!sessionId) return;
 
-      omLog(`[transform] calling resolveCredentials`);
       await resolveCredentials();
-      omLog(`[transform] resolveCredentials done`);
 
       try {
-        omLog(`[transform] converting messages`);
         const mastraMessages = convertMessages(output.messages, sessionId);
-        omLog(`[transform] converted ${mastraMessages.length} messages`);
         if (mastraMessages.length > 0) {
-          omLog(`[transform] calling runObserve`);
           await runObserve(sessionId, mastraMessages);
-          omLog(`[transform] runObserve done`);
         }
 
-        omLog(`[transform] getting record`);
         const record = await om.getRecord(sessionId);
-        omLog(`[transform] got record, lastObservedAt=${record?.lastObservedAt}`);
         if (record?.lastObservedAt) {
           const lastObservedAt = new Date(record.lastObservedAt);
           output.messages = output.messages.filter(({ info }) => {
@@ -474,7 +412,6 @@ export const MastraPlugin: Plugin = async ctx => {
           });
         }
         lastError = null;
-        omLog(`[transform] done`);
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         omLog(`[error] transform failed: ${lastError}`);
@@ -485,23 +422,16 @@ export const MastraPlugin: Plugin = async ctx => {
     },
 
     'experimental.chat.system.transform': async (input, output) => {
-      omLog(`[system.transform] called, sessionID=${input.sessionID}`);
-      if (initFailed || !om) { omLog(`[system.transform] OM not initialized, skipping`); return; }
       const sessionId = input.sessionID;
-      if (!sessionId) { omLog(`[system.transform] no sessionId, skipping`); return; }
+      if (!sessionId) return;
       try {
-        omLog(`[system.transform] getting observations`);
         const observations = await om.getObservations(sessionId);
-        omLog(`[system.transform] got observations, length=${observations?.length ?? 0}`);
         if (!observations) return;
         const optimized = optimizeObservationsForContext(observations);
         output.system.push(
           `${OBSERVATION_CONTEXT_PROMPT}\n\n<observations>\n${optimized}\n</observations>\n\n${OBSERVATION_CONTEXT_INSTRUCTIONS}\n\n${OBSERVATION_CONTINUATION_HINT}`,
         );
-        omLog(`[system.transform] done`);
-      } catch (err) {
-        omLog(`[system.transform] error: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      } catch {}
     },
 
     tool: {
@@ -571,7 +501,7 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
 
       om_observe: tool({
-        description: 'Manually trigger an observation cycle right now, without waiting for the token threshold. Automatically chunks large message sets if chunkTokens is configured.',
+        description: 'Manually trigger an observation cycle right now, without waiting for the token threshold.',
         args: {},
         async execute(_args, context) {
           const threadId = context.sessionID;
@@ -581,65 +511,8 @@ export const MastraPlugin: Plugin = async ctx => {
             if (!resp.data || resp.data.length === 0) return 'No messages to observe.';
             const mastraMessages = convertMessages(resp.data, threadId);
             await backupObservations(threadId, 'pre-observe');
-
-            const chunkBytes = config.chunkBytes;
-            if (!chunkBytes) {
-              // No chunking — original behavior
-              await runObserve(threadId, mastraMessages);
-              return 'Observation cycle triggered. Check om_status for results.';
-            }
-
-            // Chunked observe — split messages into safe-sized pieces at message boundaries
-            // Uses UTF-8 byte length — deterministic, handles multibyte chars correctly
-            const chunks: (typeof mastraMessages)[] = [];
-            let currentChunk: typeof mastraMessages = [];
-            let currentBytes = 0;
-
-            for (const msg of mastraMessages) {
-              const msgBytes = Buffer.byteLength(JSON.stringify(msg), 'utf8');
-              if (currentBytes + msgBytes > chunkBytes && currentChunk.length > 0) {
-                chunks.push(currentChunk);
-                currentChunk = [msg];
-                currentBytes = msgBytes;
-              } else {
-                currentChunk.push(msg);
-                currentBytes += msgBytes;
-              }
-            }
-            if (currentChunk.length > 0) chunks.push(currentChunk);
-
-            if (chunks.length === 1) {
-              await runObserve(threadId, mastraMessages);
-              return 'Observation cycle triggered (single chunk). Check om_status for results.';
-            }
-
-            omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
-            void ctx.client.tui.showToast({
-              body: { title: 'Mastra OM', message: `Observing in ${chunks.length} chunks (~${Math.round(chunkBytes / 1024)}KB each)...`, variant: 'info', duration: 5000 },
-            });
-
-            const refThreshold = resolveThreshold(omOptions.reflection?.observationTokens ?? 60000);
-            const reflectAt = Math.floor(refThreshold * 0.8);
-
-            for (let i = 0; i < chunks.length; i++) {
-              omLog(`[observe] processing chunk ${i + 1}/${chunks.length} (${chunks[i]!.length} messages)`);
-              await runObserve(threadId, chunks[i]!);
-
-              // Reflect between chunks if observations are getting full
-              if (i < chunks.length - 1) {
-                const record = await om.getRecord(threadId);
-                const obsTokens = record?.observationTokenCount ?? 0;
-                if (obsTokens >= reflectAt) {
-                  omLog(`[observe] observations at ${obsTokens} tokens (>= ${reflectAt}), reflecting before next chunk`);
-                  void ctx.client.tui.showToast({
-                    body: { title: 'Mastra OM', message: `Reflecting between chunks (${i + 1}/${chunks.length})...`, variant: 'info', duration: 5000 },
-                  });
-                  await om.reflect(threadId);
-                }
-              }
-            }
-
-            return `Observation complete — processed ${chunks.length} chunks, ${mastraMessages.length} messages total. Check om_status for results.`;
+            await runObserve(threadId, mastraMessages);
+            return 'Observation cycle triggered. Check memory_status for results.';
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             lastError = msg;
@@ -730,7 +603,7 @@ export const MastraPlugin: Plugin = async ctx => {
               `✅ Restored from slot ${slot}`,
               `  Generation: ${row.generationCount}`,
               `  Saved at: ${row.savedAt}`,
-              `  Trigger: ${row.triggerEvent}`,
+              `  Trigger: ${row.trigger}`,
               `  Observation tokens: ${row.observationTokenCount}`,
               `  Last observed: ${row.lastObservedAt ?? 'never'}`,
               `  Last reflection: ${row.lastReflectionAt ?? 'never'}`,
@@ -738,47 +611,6 @@ export const MastraPlugin: Plugin = async ctx => {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             return `Restore failed: ${msg}`;
-          }
-        },
-      }),
-
-      om_reset: tool({
-        description: 'Reset observational memory for this session to a clean slate. Backs up current state first so it can be restored via om_restore.',
-        args: {},
-        async execute(_args, context) {
-          const threadId = context.sessionID;
-          try {
-            const db = (store as any).turso;
-            if (!db) return 'Raw DB access unavailable.';
-
-            // Backup first — reset is recoverable
-            await backupObservations(threadId, 'pre-reset');
-
-            await db.execute({
-              sql: `UPDATE mastra_observational_memory SET
-                      activeObservations = '',
-                      generationCount = 0,
-                      observationTokenCount = 0,
-                      lastObservedAt = NULL,
-                      lastReflectionAt = NULL,
-                      pendingMessageTokens = 0,
-                      observedMessageIds = '[]',
-                      bufferedObservations = NULL,
-                      bufferedObservationTokens = 0,
-                      bufferedMessageIds = NULL,
-                      bufferedReflection = NULL,
-                      bufferedReflectionTokens = 0,
-                      bufferedReflectionInputTokens = 0,
-                      reflectedObservationLineCount = 0
-                    WHERE lookupKey = ?`,
-              args: [threadId],
-            });
-
-            omLog(`[reset] observations cleared for ${threadId}`);
-            return '✅ Observational memory reset. Previous state saved to backup slot 1 — use om_restore to recover if needed.';
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return `Reset failed: ${msg}`;
           }
         },
       }),
