@@ -178277,13 +178277,22 @@ var MastraPlugin = async (ctx) => {
       const sessionId = output.messages[0]?.info.sessionID;
       if (!sessionId)
         return;
+      omLog(`[transform] messages.transform called, messages=${output.messages.length}`);
+      omLog(`[transform] calling resolveCredentials`);
       await resolveCredentials();
+      omLog(`[transform] resolveCredentials done`);
       try {
+        omLog(`[transform] calling convertMessages`);
         const mastraMessages = convertMessages2(output.messages, sessionId);
+        omLog(`[transform] convertMessages done, count=${mastraMessages.length}`);
         if (mastraMessages.length > 0) {
+          omLog(`[transform] calling runObserve`);
           await runObserve(sessionId, mastraMessages);
+          omLog(`[transform] runObserve done`);
         }
+        omLog(`[transform] calling om.getRecord`);
         const record3 = await om.getRecord(sessionId);
+        omLog(`[transform] om.getRecord done`);
         if (record3?.lastObservedAt) {
           const lastObservedAt = new Date(record3.lastObservedAt);
           output.messages = output.messages.filter(({ info }) => {
@@ -178291,6 +178300,7 @@ var MastraPlugin = async (ctx) => {
           });
         }
         lastError = null;
+        omLog(`[transform] messages.transform complete`);
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         omLog(`[error] transform failed: ${lastError}`);
