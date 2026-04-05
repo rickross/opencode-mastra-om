@@ -644,6 +644,10 @@ export const MastraPlugin: Plugin = async ctx => {
             });
             const deleted = result.rowsAffected ?? 0;
             omLog(`[reset] deleted ${deleted} row(s) from mastra_observational_memory for ${lookupKey}`);
+            // Clear in-memory observedMessageIds Set so Mastra re-observes all messages
+            const idCount = (om as any).observedMessageIds?.size ?? 0;
+            (om as any).observedMessageIds?.clear();
+            omLog(`[reset] cleared ${idCount} in-memory observedMessageIds`);
             // Recreate a fresh record so Mastra doesn't error on next observe
             await om.getOrCreateRecord(threadId);
             omLog(`[reset] fresh record created for ${threadId}`);

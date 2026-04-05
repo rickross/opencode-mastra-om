@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.40",
+  version: "0.1.41",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178551,6 +178551,9 @@ ${OBSERVATION_CONTINUATION_HINT}`);
             });
             const deleted = result.rowsAffected ?? 0;
             omLog(`[reset] deleted ${deleted} row(s) from mastra_observational_memory for ${lookupKey}`);
+            const idCount = om.observedMessageIds?.size ?? 0;
+            om.observedMessageIds?.clear();
+            omLog(`[reset] cleared ${idCount} in-memory observedMessageIds`);
             await om.getOrCreateRecord(threadId);
             omLog(`[reset] fresh record created for ${threadId}`);
             return "✅ Observational memory reset. Previous state saved to backup slot 1 — use om_restore to recover if needed.";
