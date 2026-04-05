@@ -394,8 +394,10 @@ export const MastraPlugin: Plugin = async ctx => {
 
   return {
     event: async ({ event }) => {
+      omLog(`[event] received event type=${event.type}`);
       if (event.type === 'session.created') {
         const sessionId = event.properties.info.id;
+        omLog(`[session] creating record for ${sessionId}`);
         try {
           await om.getOrCreateRecord(sessionId);
           omLog(`[session] initialized record for ${sessionId}`);
@@ -447,16 +449,22 @@ export const MastraPlugin: Plugin = async ctx => {
     },
 
     'experimental.chat.system.transform': async (input, output) => {
+      omLog(`[system.transform] called, sessionID=${input.sessionID}`);
       const sessionId = input.sessionID;
-      if (!sessionId) return;
+      if (!sessionId) { omLog(`[system.transform] no sessionId, skipping`); return; }
       try {
+        omLog(`[system.transform] getting observations`);
         const observations = await om.getObservations(sessionId);
+        omLog(`[system.transform] got observations, length=${observations?.length ?? 0}`);
         if (!observations) return;
         const optimized = optimizeObservationsForContext(observations);
         output.system.push(
           `${OBSERVATION_CONTEXT_PROMPT}\n\n<observations>\n${optimized}\n</observations>\n\n${OBSERVATION_CONTEXT_INSTRUCTIONS}\n\n${OBSERVATION_CONTINUATION_HINT}`,
         );
-      } catch {}
+        omLog(`[system.transform] done`);
+      } catch (err) {
+        omLog(`[system.transform] error: ${err instanceof Error ? err.message : String(err)}`);
+      }
     },
 
     tool: {
