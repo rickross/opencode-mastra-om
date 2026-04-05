@@ -428,6 +428,12 @@ export const MastraPlugin: Plugin = async ctx => {
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
       omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i]!.length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      // Diagnostic: check how many chunk messages are already in DB observedMessageIds
+      const diagRecord = await om.getRecord(sessionId);
+      const dbObservedIds = new Set(Array.isArray(diagRecord?.observedMessageIds) ? diagRecord!.observedMessageIds : []);
+      const chunkIds = chunks[i]!.map(m => m.id).filter(Boolean);
+      const alreadyObserved = chunkIds.filter(id => dbObservedIds.has(id as string));
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
       const t0 = Date.now();
       await runObserve(sessionId, chunks[i]!);
       const elapsed = Date.now() - t0;

@@ -178002,7 +178002,7 @@ import { tool as tool5 } from "@opencode-ai/plugin";
 var package_default = {
   $schema: "https://json.schemastore.org/package.json",
   name: "opencode-mastra-om",
-  version: "0.1.42",
+  version: "0.1.43",
   type: "module",
   license: "MIT",
   description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
@@ -178342,6 +178342,11 @@ var MastraPlugin = async (ctx) => {
       const before = await om.getRecord(sessionId);
       const tokensBefore = before?.observationTokenCount ?? 0;
       omLog(`[observe] chunk ${i + 1}/${chunks.length} START — ${chunks[i].length} messages, ${Math.round(chunkBytes2 / 1024)}KB, obs=${tokensBefore} tokens`);
+      const diagRecord = await om.getRecord(sessionId);
+      const dbObservedIds = new Set(Array.isArray(diagRecord?.observedMessageIds) ? diagRecord.observedMessageIds : []);
+      const chunkIds = chunks[i].map((m) => m.id).filter(Boolean);
+      const alreadyObserved = chunkIds.filter((id) => dbObservedIds.has(id));
+      omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
       const t0 = Date.now();
       await runObserve(sessionId, chunks[i]);
       const elapsed = Date.now() - t0;
