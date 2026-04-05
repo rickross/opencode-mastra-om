@@ -530,9 +530,10 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
 
       om_restore: tool({
-        description: 'Restore observational memory from backup.',
+        description: 'Restore observational memory from backup slot 1 (most recent) or slot 2 (one generation older).',
         args: {},
         async execute() {
+          omLog('[restore] stubbed execute called');
           return 'stubbed';
         },
       }),
