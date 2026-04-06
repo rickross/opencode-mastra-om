@@ -4,6 +4,8 @@ OpenCode plugin that adds observational memory to agent sessions. Watches the me
 
 Built on Mastra's `ObservationalMemory`. Config lives in `.opencode/mastra.json`.
 
+Credit to [Tyler Barnes](https://github.com/tylerbarnes) and the [Mastra](https://github.com/mastra-ai/mastra) team for creating Observational Memory and the original OpenCode integration this is based on.
+
 Works with cloud models (Gemini 2.5, Claude) or local models via any OpenAI-compatible endpoint. Early testing suggests Gemma 4 26B MoE is a viable local alternative — instruction following is good enough for both observation and reflection passes. Still being validated across different sessions and quantizations.
 
 ## Installation
