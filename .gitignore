@@ -1,4 +1,5 @@
 node_modules/
+versions/
 om-debug.log
 bench-results.json
 bench-chunks.ts

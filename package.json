@@ -4,7 +4,7 @@
   "version": "0.1.45",
   "type": "module",
   "license": "MIT",
-  "description": "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
+  "description": "Observational memory plugin for OpenCode, built on Mastra",
   "keywords": [
     "opencode",
     "plugin",
@@ -50,7 +50,7 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && node -e \"const v=require('./package.json').version; const fs=require('fs'); fs.mkdirSync('versions/v'+v,{recursive:true}); fs.copyFileSync('dist/index.js','versions/v'+v+'/index.js'); console.log('saved versions/v'+v+'/index.js')\"",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   }
