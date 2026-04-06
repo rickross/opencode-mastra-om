@@ -4,3 +4,4 @@ bench-results.json
 bench-chunks.ts
 bench-chunks-small.ts
 test-chunk-output-*.txt
+test-chunk.ts
