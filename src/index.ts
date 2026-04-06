@@ -90,6 +90,14 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    */
   logPath?: string;
   /**
+   * Base URL for an OpenAI-compatible local endpoint.
+   * When set, the model string is sent to this URL instead of the default provider.
+   * E.g., "http://localhost:8000/v1" for a local vLLM or llama.cpp server.
+   * Use with `model` set to the model name served at that endpoint.
+   */
+  modelUrl?: string;
+
+  /**
    * If set, om_observe splits messages into chunks of this size and processes them sequentially.
    * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
    * E.g., 2000000 (2MB) for Gemini 2.5 Flash, 400000 (400KB) for Claude.
@@ -287,7 +295,16 @@ export const MastraPlugin: Plugin = async ctx => {
 
   // Set top-level model only if not overriding both separately
   if (config.model && !config.observationModel && !config.reflectionModel) {
-    omOptions.model = config.model;
+    if (config.modelUrl) {
+      // Build an OpenAI-compatible config pointing at a local endpoint
+      omOptions.model = {
+        id: config.model as `${string}/${string}`,
+        url: config.modelUrl,
+        apiKey: config.apiKey ?? 'EMPTY',
+      };
+    } else {
+      omOptions.model = config.model;
+    }
   }
 
   const om = new ObservationalMemory(omOptions);

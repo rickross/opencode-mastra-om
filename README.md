@@ -61,15 +61,18 @@ Add to `opencode.json`:
 
 ### Local models
 
-Point `model` at any OpenAI-compatible endpoint using the `openai/` prefix:
+Point at any OpenAI-compatible endpoint with `modelUrl`:
 
 ```json
 {
-  "model": "openai/gemma4-26b-a4b-it",
+  "model": "gemma4-26b-a4b-it",
+  "modelUrl": "http://localhost:8000/v1",
   "apiKey": "EMPTY",
-  "storageUrl": "..."
+  "storagePath": ".opencode/memory/observations.db"
 }
 ```
+
+`model` should match the model name your server is serving. `apiKey` can be any non-empty string if your server doesn't require one.
 
 ### PostgreSQL
 
