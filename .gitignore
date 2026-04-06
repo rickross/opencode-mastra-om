@@ -1,1 +1,6 @@
 node_modules/
+om-debug.log
+bench-results.json
+bench-chunks.ts
+bench-chunks-small.ts
+test-chunk-output-*.txt
