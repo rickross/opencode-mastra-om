@@ -296,9 +296,14 @@ export const MastraPlugin: Plugin = async ctx => {
   // Set top-level model only if not overriding both separately
   if (config.model && !config.observationModel && !config.reflectionModel) {
     if (config.modelUrl) {
-      // Build an OpenAI-compatible config pointing at a local endpoint
+      // Build an OpenAI-compatible config pointing at a custom endpoint.
+      // Mastra's ModelRouterLanguageModel splits `id` by `/` and only sends
+      // the model-part (after the first `/`) to the API.  Our router
+      // (heimdall) expects the full "provider/model" string, so we prefix
+      // with a dummy provider to keep the full identifier in the model slot.
+      const modelId = config.model as `${string}/${string}`;
       omOptions.model = {
-        id: config.model as `${string}/${string}`,
+        id: `_/${modelId}` as `${string}/${string}`,
         url: config.modelUrl,
         apiKey: config.apiKey ?? 'EMPTY',
       };
