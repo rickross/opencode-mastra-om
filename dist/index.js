@@ -427,7 +427,7 @@ var require_sqlite_error = __commonJS((exports, module) => {
 
 // node_modules/libsql/index.js
 var require_libsql = __commonJS((exports, module) => {
-  var __dirname = "/Volumes/Huddy/Projects/opencode-mastra-om-worktrees/current-mastra/node_modules/libsql";
+  var __dirname = "/Volumes/Huddy/Projects/opencode-mastra-om/node_modules/libsql";
   var { load, currentTarget } = require_dist();
   var { familySync, GLIBC, MUSL } = require_detect_libc();
   function requireNative() {
