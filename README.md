@@ -90,7 +90,7 @@ Point at any OpenAI-compatible endpoint with `modelUrl`:
 |------|-------------|
 | `om_status` | Observation progress and next cycle threshold |
 | `om_observations` | Current stored observations |
-| `om_observe` | Trigger an observation cycle. Optional `since` ISO date to observe only recent messages |
+| `om_observe` | Request an observation cycle when the configured threshold is met. Optional `since` ISO date limits the considered messages |
 | `om_reflect` | Trigger a reflection (compression) cycle |
 | `om_prune` | Prune already-observed messages from storage |
 | `om_reset` | Clear observations and start fresh. Backs up first |
