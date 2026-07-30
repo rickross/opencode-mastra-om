@@ -96,7 +96,6 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    * Use with `model` set to the model name served at that endpoint.
    */
   modelUrl?: string;
-
   /**
    * If set, om_observe splits messages into chunks of this size and processes them sequentially.
    * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
@@ -127,6 +126,11 @@ const PROVIDER_ENV_VARS: Record<string, string[]> = {
   deepseek: ['DEEPSEEK_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
   fireworks: ['FIREWORKS_API_KEY'],
+};
+
+export default {
+  id: 'opencode.mastra-om',
+  server: MastraPlugin,
 };
 
 async function loadConfig(directory: string): Promise<MastraOMPluginConfig> {
@@ -186,7 +190,7 @@ function resolveThreshold(t: number | { min: number; max: number }): number {
   return typeof t === 'number' ? t : t.max;
 }
 
-export const MastraPlugin: Plugin = async ctx => {
+export async function MastraPlugin(ctx: Parameters<Plugin>[0], _options?: Parameters<Plugin>[1]) {
   const config = await loadConfig(ctx.directory);
 
   // Debug logger
@@ -204,7 +208,7 @@ export const MastraPlugin: Plugin = async ctx => {
     if (logFile) { try { appendFileSync(logFile, line); } catch {} }
   };
 
-  omLog(`[init] mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
+  omLog(`[init] opencode-mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
 
   // Track last error for memory_status
   let lastError: string | null = null;
@@ -296,7 +300,6 @@ export const MastraPlugin: Plugin = async ctx => {
   // Set top-level model only if not overriding both separately
   if (config.model && !config.observationModel && !config.reflectionModel) {
     if (config.modelUrl) {
-      // Build an OpenAI-compatible config pointing at a local endpoint
       omOptions.model = {
         id: config.model as `${string}/${string}`,
         url: config.modelUrl,
@@ -757,6 +760,4 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
     },
   };
-};
-
-
+}

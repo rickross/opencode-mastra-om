@@ -14430,7 +14430,7 @@ class JSONSchemaGenerator {
               if (val === undefined) {
                 if (this.unrepresentable === "throw") {
                   throw new Error("Literal `undefined` cannot be represented in JSON Schema");
-                } else {}
+                }
               } else if (typeof val === "bigint") {
                 if (this.unrepresentable === "throw") {
                   throw new Error("BigInt literals cannot be represented in JSON Schema");
@@ -103746,7 +103746,7 @@ var require_stream_parser = __commonJS((exports, module) => {
         var args = [];
         if (chunk) {
           args.push(chunk);
-        } else {}
+        }
         if (output) {
           args.push(output);
         }
@@ -108856,7 +108856,7 @@ var require_dbcs_codec = __commonJS((exports) => {
           if (resCode !== undefined) {
             dbcsCode = resCode;
             nextChar = uCode;
-          } else {}
+          }
         }
         seqObj = undefined;
       } else if (uCode >= 0) {
@@ -108912,7 +108912,7 @@ var require_dbcs_codec = __commonJS((exports) => {
           newBuf[j++] = dbcsCode >> 8;
           newBuf[j++] = dbcsCode & 255;
         }
-      } else {}
+      }
       this.seqObj = undefined;
     }
     if (this.leadSurrogate !== -1) {
@@ -116863,7 +116863,7 @@ class HranaTransaction {
       } else {
         if (this.#version < 3) {
           await this.#started;
-        } else {}
+        }
         this._getSqlCache().apply(hranaStmts);
         const batch = stream.batch(this.#version >= 3);
         let lastStep = undefined;
@@ -117305,7 +117305,7 @@ class WsClient2 {
         if (this.#connState !== futureConnState) {
           if (this.#connState.streamStates.size === 0) {
             this.#connState.client.close();
-          } else {}
+          }
         }
         this.#connState = futureConnState;
         this.#futureConnState = undefined;
@@ -178005,7 +178005,7 @@ var package_default = {
   version: "0.1.45",
   type: "module",
   license: "MIT",
-  description: "Enhanced Mastra Observational Memory plugin for OpenCode — persistent cross-session memory with observation, reflection, and manual trigger tools",
+  description: "Observational memory plugin for OpenCode, built on Mastra",
   keywords: [
     "opencode",
     "plugin",
@@ -178051,7 +178051,7 @@ var package_default = {
     typescript: "^5.0.0"
   },
   scripts: {
-    build: `bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && node -e "const v=require('./package.json').version; const fs=require('fs'); fs.mkdirSync('versions/v'+v,{recursive:true}); fs.copyFileSync('dist/index.js','versions/v'+v+'/index.js'); console.log('saved versions/v'+v+'/index.js')"`,
+    build: "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk",
     typecheck: "tsc --noEmit",
     prepublishOnly: "bun run build"
   }
@@ -178071,6 +178071,10 @@ var PROVIDER_ENV_VARS = {
   deepseek: ["DEEPSEEK_API_KEY"],
   openrouter: ["OPENROUTER_API_KEY"],
   fireworks: ["FIREWORKS_API_KEY"]
+};
+var src_default = {
+  id: "opencode.mastra-om",
+  server: MastraPlugin
 };
 async function loadConfig(directory) {
   try {
@@ -178125,7 +178129,7 @@ function formatTokens(n) {
 function resolveThreshold(t2) {
   return typeof t2 === "number" ? t2 : t2.max;
 }
-var MastraPlugin = async (ctx) => {
+async function MastraPlugin(ctx, _options) {
   const config2 = await loadConfig(ctx.directory);
   let logFile = null;
   if (config2.logPath) {
@@ -178144,7 +178148,7 @@ var MastraPlugin = async (ctx) => {
       } catch {}
     }
   };
-  omLog(`[init] mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
+  omLog(`[init] opencode-mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
   let lastError = null;
   let credentialsReady = false;
   const resolveCredentials = async () => {
@@ -178215,7 +178219,15 @@ var MastraPlugin = async (ctx) => {
     }
   };
   if (config2.model && !config2.observationModel && !config2.reflectionModel) {
-    omOptions.model = config2.model;
+    if (config2.modelUrl) {
+      omOptions.model = {
+        id: config2.model,
+        url: config2.modelUrl,
+        apiKey: config2.apiKey ?? "EMPTY"
+      };
+    } else {
+      omOptions.model = config2.model;
+    }
   }
   const om = new ObservationalMemory(omOptions);
   omLog(`[init] ObservationalMemory created, model=${config2.model ?? "default"}`);
@@ -178642,7 +178654,8 @@ ${OBSERVATION_CONTINUATION_HINT}`);
       })
     }
   };
-};
+}
 export {
+  src_default as default,
   MastraPlugin
 };
