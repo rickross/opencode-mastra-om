@@ -41,7 +41,7 @@ This is a valid density/provenance comparison, not a reply-utility winner metric
 | Case | Current Mastra | Frozen production path | Decision |
 | --- | --- | --- | --- |
 | A04 correction | Detects replacement intent; retains stale and new claims; held-out answer correct | Direct `det_v0@0.2.2` emits two asserted records before lifecycle projection; held-out answer stale | Assimilate semantic correction proposal; require IRL-596 deterministic lifecycle publication |
-| A06 privacy | Understands boundary as prose; sensitive fact remains model-facing; ordinary probe invents generic family status | Typed `ask_before_surface`; ordinary slab omits fact; explicit ask currently has no product rerender path | Retain deterministic policy; require IRL-597 authorized per-turn render |
+| A06 privacy | Understands boundary as prose; sensitive fact remains model-facing; neutral ordinary probe withholds | Typed `ask_before_surface`; ordinary slab omits fact; explicit ask currently has no product rerender path | Retain deterministic policy; require IRL-597 authorized per-turn render |
 | B01 assistant authority | Preserves tentative user intent; does not adopt assistant 5K/runner speculation; duplicates intent | Cannot promote assistant text; misses tentative intent | Assimilate typed tentative-intent extraction; retain user-source authority; consolidate duplicates |
 | Real 60-message lifecycle | Stateful deltas and reflection work; compact semantic surface | Source-event replay is fully attributable but too literal for a direct active slab | Retain Mastra as semantic reference; retain ACE as source/provenance authority |
 
