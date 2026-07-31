@@ -54,6 +54,7 @@
     "typecheck": "tsc --noEmit",
     "replay:opencode": "bun ./dist/replay-opencode-session.js",
     "selftest:replay": "bun ./src/replay-opencode-session.selftest.ts",
+    "selftest:fixture": "bun ./src/replay-irl-fixture.selftest.ts",
     "prepublishOnly": "bun run build"
   }
 }
