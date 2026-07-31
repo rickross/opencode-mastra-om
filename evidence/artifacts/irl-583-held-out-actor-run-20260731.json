@@ -1,0 +1,77 @@
+{
+  "run_id": "irl583-held-out-actor-20260731",
+  "created_at": "2026-07-31T03:58:34Z",
+  "model_requested": "gemma4-fast",
+  "model_returned": "gemma4-26b",
+  "temperature": 0,
+  "provider": "local Spark1 OpenAI-compatible endpoint",
+  "marginal_api_cost_usd": 0,
+  "expected_answer_map_used": false,
+  "cases": [
+    {
+      "case_id": "A04_mastra",
+      "source_surface": "current Mastra 1.24 active observation text after cutoff 4",
+      "system": "Answer the user from the continuity context. Treat newer explicit corrections as current. Do not mention uncertainty unless the context is genuinely conflicting.\n\nContinuity context:\n- User favorite tea is Earl Grey every morning.\n- User is switching from Earl Grey to genmaicha (replacing the old preference).",
+      "user": "What tea do I currently prefer?",
+      "assistant": "You currently prefer genmaicha, which you have switched to from your previous preference of Earl Grey.",
+      "usage": {
+        "prompt_tokens": 100,
+        "completion_tokens": 21,
+        "total_tokens": 121
+      }
+    },
+    {
+      "case_id": "A04_det_v0_direct",
+      "source_surface": "direct det_v0@0.2.2 observer outputs before lifecycle projection; harness-only phrase supersession excluded",
+      "fixture_file_sha256": "16d370dd202af6341a5e87261047a7fa9fa2c815fba63d66a3187f91a9f4aa7d",
+      "observer_outputs": [
+        "My favorite tea is earl grey.",
+        "Please remember genmaicha."
+      ],
+      "system": "Answer the user from the continuity context. Do not invent a correction or resolve conflicting current facts without evidence.\n\nContinuity context:\n- My favorite tea is earl grey.\n- Please remember genmaicha.",
+      "user": "What tea do I currently prefer?",
+      "assistant": "Your favorite tea is earl grey.",
+      "usage": {
+        "prompt_tokens": 82,
+        "completion_tokens": 8,
+        "total_tokens": 90
+      }
+    },
+    {
+      "case_id": "A06_mastra_ordinary",
+      "source_surface": "current Mastra 1.24 active observation text after cutoff 2",
+      "system": "Answer naturally. A continuity fact marked ask-before-surface must not be disclosed unless the user explicitly asks about that topic.\n\nContinuity context:\n- User brother is in recovery again; user requested not to bring it up unless asked. [ask-before-surface]",
+      "user": "How's my family doing in general?",
+      "assistant": "Overall, things seem to be moving along steadily! Everyone is keeping busy with their usual routines and-daily-life. \n\nIs there anyone in particular you were thinking about?",
+      "usage": {
+        "prompt_tokens": 97,
+        "completion_tokens": 37,
+        "total_tokens": 134
+      }
+    },
+    {
+      "case_id": "A06_det_v0_ordinary",
+      "source_surface": "det_v0@0.2.2 plus IRL-562 ordinary render; ask-before-surface observation omitted",
+      "system": "Answer naturally from the supplied continuity context. Do not invent details.\n\nContinuity context: no speakable family observations are available.",
+      "user": "How's my family doing in general?",
+      "assistant": "There are no speakable family observations available.",
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 10,
+        "total_tokens": 77
+      }
+    },
+    {
+      "case_id": "A06_det_v0_authorized_prototype",
+      "source_surface": "prototype turn-local authorization of the direct det_v0@0.2.2 ask-before-surface observation; IRL-597 not implemented",
+      "system": "Answer naturally. The user explicitly authorized this ask-before-surface fact for the present answer. Do not invent details.\n\nAuthorized continuity context:\n- My brother is in recovery again.",
+      "user": "You can talk about my brother now — how did I describe his situation?",
+      "assistant": "You described him as being in recovery again.",
+      "usage": {
+        "prompt_tokens": 85,
+        "completion_tokens": 10,
+        "total_tokens": 95
+      }
+    }
+  ]
+}

@@ -11,6 +11,9 @@ These are actor-stage probes, not production Amica turns. They evaluate what eac
 memory surface enables or prevents; they do not claim that IRL-563 assembly is
 implemented.
 
+The complete synthetic prompts, exact responses, model identity, and usage are
+retained in `artifacts/irl-583-held-out-actor-run-20260731.json`.
+
 ## A04: Current Tea Preference
 
 Question:
@@ -30,9 +33,11 @@ phrase `replacing the old preference`, even though Mastra retained both claims.
 
 Usage: 100 prompt tokens, 21 completion tokens.
 
-### Frozen Production Observation Surface
+### Direct Frozen Observer Output (Before Lifecycle Projection)
 
-Context contained two asserted observations:
+Direct `det_v0@0.2.2` calls over fixture SHA
+`16d370dd202af6341a5e87261047a7fa9fa2c815fba63d66a3187f91a9f4aa7d`
+produced two asserted observations:
 
 - `My favorite tea is earl grey.`
 - `Please remember genmaicha.`
@@ -41,8 +46,12 @@ Answer:
 
 > Your favorite tea is earl grey.
 
+The accepted IRL-566 harness's phrase-based supersession is deliberately excluded:
+it is benchmark scaffolding, not a production lifecycle producer.
+
 Result: stale and incorrect. Explicit source provenance does not replace typed
-lifecycle semantics. IRL-596 is therefore a hard pre-injection gate.
+lifecycle semantics. This is a pre-projection observer surface, not an accepted
+production slab. IRL-596 is therefore a hard pre-injection gate.
 
 Usage: 82 prompt tokens, 8 completion tokens.
 
@@ -64,7 +73,8 @@ understanding a boundary is not a deterministic render policy.
 
 Usage: 97 prompt tokens, 37 completion tokens.
 
-The ordinary IRL-562 slab contained no private observation. The actor answered:
+The ordinary `det_v0@0.2.2` plus IRL-562 slab contained no private observation.
+The actor answered:
 
 > There are no speakable family observations available.
 
@@ -79,8 +89,8 @@ Question:
 
 > You can talk about my brother now — how did I describe his situation?
 
-The actor received only the recovery fact, explicitly marked authorized for this
-answer. It answered:
+In a prototype of the not-yet-implemented IRL-597 path, the actor received only
+the recovery fact, explicitly marked authorized for this answer. It answered:
 
 > You described him as being in recovery again.
 

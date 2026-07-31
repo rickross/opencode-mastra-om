@@ -1,8 +1,10 @@
-# IRL-583 Current Mastra vs ACE Decision Ledger
+# IRL-583 Current Mastra vs ACE Candidate Decision Ledger
 
 ## Scope
 
-This ledger closes the bounded shadow comparison requested by IRL-583. It covers:
+This ledger records candidate decisions from the bounded shadow comparison. It
+does not close IRL-583 before the required stakeholder review and any accepted
+remaining chronology/noise run. It covers:
 
 - current Mastra core `1.55.0`, memory `1.24.0`, libsql `1.18.0`;
 - stateful `observe()` / `reflect()` lifecycle on a private authorized 60-message
@@ -28,17 +30,17 @@ Reflection reduced the active surface by 55.3 percent and the next observation
 processed only the 20-message delta. Both generations remained in the disposable
 LibSQL store.
 
-The ACE structural replay over the selected source database produced 58 normalized
-source events, not 60 Mastra messages. It is therefore retained as provenance and
-adapter-semantics evidence, not treated as an exact semantic score comparison.
-The mismatch is itself fail-closed: no winner metric is computed over unequal
-source identity/count surfaces.
+The final same-source ACE run received the same 60 ordered message IDs; direct ID
+comparison returned no differences. ACE retained 60 claim/event source IDs and
+rendered an estimated 3,991 tokens. Current Mastra's final active surface was 807
+tokens, approximately 79.8 percent smaller, but lacked claim-level source IDs.
+This is a valid density/provenance comparison, not a reply-utility winner metric.
 
 ## Representative Comparisons
 
 | Case | Current Mastra | Frozen production path | Decision |
 | --- | --- | --- | --- |
-| A04 correction | Detects replacement intent; retains stale and new claims; held-out answer correct | Explicit source spans; emits two asserted records; held-out answer stale | Assimilate semantic correction proposal; require IRL-596 deterministic lifecycle publication |
+| A04 correction | Detects replacement intent; retains stale and new claims; held-out answer correct | Direct `det_v0@0.2.2` emits two asserted records before lifecycle projection; held-out answer stale | Assimilate semantic correction proposal; require IRL-596 deterministic lifecycle publication |
 | A06 privacy | Understands boundary as prose; sensitive fact remains model-facing; ordinary probe invents generic family status | Typed `ask_before_surface`; ordinary slab omits fact; explicit ask currently has no product rerender path | Retain deterministic policy; require IRL-597 authorized per-turn render |
 | B01 assistant authority | Preserves tentative user intent; does not adopt assistant 5K/runner speculation; duplicates intent | Cannot promote assistant text; misses tentative intent | Assimilate typed tentative-intent extraction; retain user-source authority; consolidate duplicates |
 | Real 60-message lifecycle | Stateful deltas and reflection work; compact semantic surface | Source-event replay is fully attributable but too literal for a direct active slab | Retain Mastra as semantic reference; retain ACE as source/provenance authority |
@@ -121,11 +123,13 @@ not introduced as a second storage or render authority.
 - Private raw artifacts under
   `b2-irelate:irelate-bootstrap/memory-experiments/irl-583/`
 
-## Final Verdict
+## Candidate Verdict
 
-IRL-583 does not select Current Mastra as the production memory engine. It proves
-that Mastra contributes semantic capabilities worth assimilating and that ACE's
-deterministic envelope is necessary for source truth, current-state lifecycle,
-privacy, and render safety.
+The evidence does not support selecting Current Mastra as the production memory
+engine. It supports the candidate conclusion that Mastra contributes semantic
+capabilities worth assimilating and that ACE's deterministic envelope is
+necessary for source truth, current-state lifecycle, privacy, and render safety.
 
-The comparison gate is complete. Active injection is not approved.
+IRL-583 remains open pending Rick/Aurora/Solène review and resolution of whether
+the separate long-gap/noise slice and deployed direct-LibSQL lane from ACE-274 are
+required for this product decision. Active injection is not approved.
