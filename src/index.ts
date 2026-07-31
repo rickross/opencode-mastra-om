@@ -36,6 +36,7 @@ import { LibSQLStore } from '@mastra/libsql';
 // @mastra/pg is loaded dynamically to avoid hard dependency when using SQLite
 import {
   ObservationalMemory,
+  type ObservationalMemoryConfig,
   TokenCounter,
   optimizeObservationsForContext,
   OBSERVATION_CONTINUATION_HINT,
@@ -96,7 +97,6 @@ export interface MastraOMPluginConfig extends ObservationalMemoryOptions {
    * Use with `model` set to the model name served at that endpoint.
    */
   modelUrl?: string;
-
   /**
    * If set, om_observe splits messages into chunks of this size and processes them sequentially.
    * Measured in UTF-8 bytes — splits only at message boundaries, never mid-string.
@@ -127,6 +127,11 @@ const PROVIDER_ENV_VARS: Record<string, string[]> = {
   deepseek: ['DEEPSEEK_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
   fireworks: ['FIREWORKS_API_KEY'],
+};
+
+export default {
+  id: 'opencode.mastra-om',
+  server: MastraPlugin,
 };
 
 async function loadConfig(directory: string): Promise<MastraOMPluginConfig> {
@@ -186,7 +191,10 @@ function resolveThreshold(t: number | { min: number; max: number }): number {
   return typeof t === 'number' ? t : t.max;
 }
 
-export const MastraPlugin: Plugin = async ctx => {
+export async function MastraPlugin(
+  ctx: Parameters<Plugin>[0],
+  _options?: Parameters<Plugin>[1],
+): ReturnType<Plugin> {
   const config = await loadConfig(ctx.directory);
 
   // Debug logger
@@ -204,7 +212,7 @@ export const MastraPlugin: Plugin = async ctx => {
     if (logFile) { try { appendFileSync(logFile, line); } catch {} }
   };
 
-  omLog(`[init] mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
+  omLog(`[init] opencode-mastra-om plugin starting v${PKG_VERSION}, pid=${process.pid}`);
 
   // Track last error for memory_status
   let lastError: string | null = null;
@@ -279,7 +287,7 @@ export const MastraPlugin: Plugin = async ctx => {
   if (!storage) throw new Error(`mastra-om: failed to initialize storage`);
 
   // Build OM config — support separate observation/reflection models
-  const omOptions: ObservationalMemoryOptions = {
+  const omOptions: ObservationalMemoryConfig = {
     storage,
     scope: config.scope,
     shareTokenBudget: config.shareTokenBudget,
@@ -296,7 +304,6 @@ export const MastraPlugin: Plugin = async ctx => {
   // Set top-level model only if not overriding both separately
   if (config.model && !config.observationModel && !config.reflectionModel) {
     if (config.modelUrl) {
-      // Build an OpenAI-compatible config pointing at a local endpoint
       omOptions.model = {
         id: config.model as `${string}/${string}`,
         url: config.modelUrl,
@@ -379,7 +386,7 @@ export const MastraPlugin: Plugin = async ctx => {
 
   // Helper: run observation with toasts
   const runObserve = async (sessionId: string, messages: ReturnType<typeof convertMessages>) => {
-    await om.observe({
+    const result = await om.observe({
       threadId: sessionId,
       messages,
       hooks: {
@@ -401,14 +408,14 @@ export const MastraPlugin: Plugin = async ctx => {
         },
       },
     });
+    return result.observed;
   };
 
   // Helper: run observation with chunking if chunkBytes is set
   const runObserveChunked = async (sessionId: string, messages: ReturnType<typeof convertMessages>) => {
     const chunkBytes = config.chunkBytes;
     if (!chunkBytes) {
-      await runObserve(sessionId, messages);
-      return;
+      return runObserve(sessionId, messages);
     }
 
     const chunks: (typeof messages)[] = [];
@@ -428,8 +435,7 @@ export const MastraPlugin: Plugin = async ctx => {
     if (currentChunk.length > 0) chunks.push(currentChunk);
 
     if (chunks.length === 1) {
-      await runObserve(sessionId, messages);
-      return;
+      return runObserve(sessionId, messages);
     }
 
     omLog(`[observe] chunked into ${chunks.length} chunks of ~${Math.round(chunkBytes / 1024)}KB each`);
@@ -441,6 +447,7 @@ export const MastraPlugin: Plugin = async ctx => {
     const reflectAt = Math.floor(refThreshold * 0.8);
     const chunkDelay = config.chunkDelay ?? 200;
 
+    let observed = false;
     for (let i = 0; i < chunks.length; i++) {
       const chunkBytes2 = chunks[i]!.reduce((acc, m) => acc + Buffer.byteLength(JSON.stringify(m), 'utf8'), 0);
       const before = await om.getRecord(sessionId);
@@ -464,7 +471,7 @@ export const MastraPlugin: Plugin = async ctx => {
       const alreadyObserved = chunkIds.filter(id => dbObservedIds.has(id as string));
       omLog(`[observe] chunk ${i + 1}/${chunks.length} DIAG — lastObservedAt=${diagRecord?.lastObservedAt ?? 'null'}, dbObservedIds=${dbObservedIds.size}, chunkMsgIds=${chunkIds.length}, alreadyObserved=${alreadyObserved.length}`);
       const t0 = Date.now();
-      await runObserve(sessionId, chunks[i]!);
+      observed = (await runObserve(sessionId, chunks[i]!)) || observed;
       const elapsed = Date.now() - t0;
       const after = await om.getRecord(sessionId);
       const tokensAfter = after?.observationTokenCount ?? 0;
@@ -479,6 +486,7 @@ export const MastraPlugin: Plugin = async ctx => {
         await new Promise(resolve => setTimeout(resolve, chunkDelay));
       }
     }
+    return observed;
   };
 
   return {
@@ -601,7 +609,7 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
 
       om_observe: tool({
-        description: 'Manually trigger an observation cycle right now, without waiting for the token threshold. Optionally pass a `since` ISO date string to observe only messages from that point forward. Omit `since` to observe the full history from the beginning.',
+        description: 'Request an observation cycle for current unobserved messages. Mastra runs the cycle when its configured observation threshold is met. Optionally pass a `since` ISO date string to consider only messages from that point forward.',
         args: {
           since: tool.schema.string().optional().describe('ISO date string (e.g. "2026-04-05T12:00:00Z") — only observe messages after this time. Omit to observe full history.'),
         },
@@ -622,8 +630,10 @@ export const MastraPlugin: Plugin = async ctx => {
             }
             if (allMessages.length === 0) return 'No messages in the specified time range.';
             await backupObservations(threadId, 'pre-observe');
-            await runObserveChunked(threadId, allMessages);
-            return 'Observation complete. Check om_status for results.';
+            const observed = await runObserveChunked(threadId, allMessages);
+            return observed
+              ? 'Observation complete. Check om_status for results.'
+              : 'Observation not run: unobserved messages are below the configured observation threshold.';
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             lastError = msg;
@@ -757,6 +767,4 @@ export const MastraPlugin: Plugin = async ctx => {
       }),
     },
   };
-};
-
-
+}
