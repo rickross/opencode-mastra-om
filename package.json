@@ -50,8 +50,10 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build ./src/replay-opencode-session.ts --outfile ./dist/replay-opencode-session.js --target bun --packages external",
     "typecheck": "tsc --noEmit",
+    "replay:opencode": "bun ./dist/replay-opencode-session.js",
+    "selftest:replay": "bun ./src/replay-opencode-session.selftest.ts",
     "prepublishOnly": "bun run build"
   }
 }

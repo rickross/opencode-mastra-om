@@ -118,3 +118,27 @@ Rough sizing: 400000 for Claude, 2000000 for Gemini 2.5 Flash.
 
 - Reflection can loop if observations won't compress below the threshold. Raise `reflection.observationTokens` as a workaround. Upstream: [mastra-ai/mastra#14110](https://github.com/mastra-ai/mastra/issues/14110).
 - Chunked observation may produce inconsistent results if a session is partially observed and re-run.
+
+## Frozen session replay
+
+The standalone replay CLI runs the installed Mastra `ObservationalMemory` lifecycle against a frozen OpenCode SQLite session. It opens the source read-only, freezes the transcript before any model call, and writes to a new disposable memory database and artifact directory only.
+
+```sh
+bun run replay:opencode -- \
+  --db /path/to/frozen-opencode.db \
+  --session ses_example \
+  --out /tmp/ace-274-artifacts \
+  --memory-db /tmp/ace-274-memory.db \
+  --observe-cutoffs 20,40,60 \
+  --reflect-after 2 \
+  --model local-model \
+  --model-url http://localhost:8000/v1 \
+  --api-key-env REPLAY_MODEL_API_KEY \
+  --run-id frozen-example
+```
+
+Cutoffs are strictly increasing cumulative replayable message counts. Both output paths must not exist. The CLI atomically reserves the memory target and rejects the source database family and live `.opencode/memory/observations.db` family, including SQLite WAL, SHM, and journal sidecars.
+
+Use `--api-key-env` so credentials do not enter shell history or process listings. `--api-key` remains available for controlled environments, but cannot be combined with `--api-key-env`.
+
+Run the focused deterministic integration test with `bun run selftest:replay`.
