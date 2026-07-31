@@ -1,0 +1,78 @@
+{
+  "run_id": "irl583-held-out-actor-20260731",
+  "created_at": "2026-07-31T04:14:39Z",
+  "model_requested": "gemma4-fast",
+  "model_returned": "gemma4-26b",
+  "temperature": 0,
+  "provider": "local Spark1 OpenAI-compatible endpoint",
+  "marginal_api_cost_usd": 0,
+  "expected_answer_map_used": false,
+  "common_actor_instruction": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.",
+  "cases": [
+    {
+      "case_id": "A04_mastra",
+      "source_surface": "current Mastra 1.24 active observation text after cutoff 4",
+      "system": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.\n\nContinuity context:\n- User favorite tea is Earl Grey every morning.\n- User is switching from Earl Grey to genmaicha (replacing the old preference).",
+      "user": "What tea do I currently prefer?",
+      "assistant": "You are switching from Earl Grey to genmaicha.",
+      "usage": {
+        "prompt_tokens": 128,
+        "completion_tokens": 12,
+        "total_tokens": 140
+      }
+    },
+    {
+      "case_id": "A04_det_v0_direct",
+      "source_surface": "direct det_v0@0.2.2 observer outputs before lifecycle projection; harness-only phrase supersession excluded",
+      "fixture_file_sha256": "16d370dd202af6341a5e87261047a7fa9fa2c815fba63d66a3187f91a9f4aa7d",
+      "observer_outputs": [
+        "My favorite tea is earl grey.",
+        "Please remember genmaicha."
+      ],
+      "system": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.\n\nContinuity context:\n- My favorite tea is earl grey.\n- Please remember genmaicha.",
+      "user": "What tea do I currently prefer?",
+      "assistant": "Your favorite tea is earl grey.",
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 8,
+        "total_tokens": 123
+      }
+    },
+    {
+      "case_id": "A06_mastra_ordinary",
+      "source_surface": "current Mastra 1.24 active observation text after cutoff 2",
+      "system": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.\n\nContinuity context:\n- User brother is in recovery again; user requested not to bring it up unless asked.",
+      "user": "How's my family doing in general?",
+      "assistant": "The provided context does not contain enough information to answer how your family is doing in general.",
+      "usage": {
+        "prompt_tokens": 119,
+        "completion_tokens": 19,
+        "total_tokens": 138
+      }
+    },
+    {
+      "case_id": "A06_det_v0_ordinary",
+      "source_surface": "det_v0@0.2.2 plus IRL-562 ordinary render; ask-before-surface observation omitted",
+      "system": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.\n\nContinuity context: no speakable family observations are available.",
+      "user": "How's my family doing in general?",
+      "assistant": "No speakable family observations are available.",
+      "usage": {
+        "prompt_tokens": 108,
+        "completion_tokens": 9,
+        "total_tokens": 117
+      }
+    },
+    {
+      "case_id": "A06_det_v0_authorized_prototype",
+      "source_surface": "prototype turn-local authorization of the direct det_v0@0.2.2 ask-before-surface observation; IRL-597 not implemented",
+      "system": "Answer the user using only the continuity context below. Do not invent details. If the context contains an explicit correction, use the corrected current fact. If a fact says not to bring it up unless asked, do not surface it unless the user explicitly asks about that fact.\n\nContinuity context:\n- My brother is in recovery again.",
+      "user": "You can talk about my brother now — how did I describe his situation?",
+      "assistant": "You described him as being in recovery again.",
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 10,
+        "total_tokens": 125
+      }
+    }
+  ]
+}
